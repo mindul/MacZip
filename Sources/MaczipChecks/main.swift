@@ -10,5 +10,6 @@ pathChecks()
 deflateChecks()
 zipWriterChecks()
 zipReaderChecks()
+archiverChecks()
 
 Harness.finish()
