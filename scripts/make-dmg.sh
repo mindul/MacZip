@@ -21,7 +21,6 @@ cp packaging/AppIcon.icns "$STAGE/.VolumeIcon.icns"
 hdiutil create -volname Maczip -srcfolder "$STAGE" -ov -format UDRW "$RW" >/dev/null
 hdiutil attach "$RW" -nobrowse -noautoopen -mountpoint "$MOUNT" >/dev/null
 SetFile -a C "$MOUNT"
-rm -rf "$MOUNT/.fseventsd"   # 마운트 중 macOS가 만든 숨김 폴더는 배포본에서 뺀다
 hdiutil detach "$MOUNT" >/dev/null
 
 # 2) 배포용 압축 이미지로 변환한다.
