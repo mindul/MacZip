@@ -38,18 +38,26 @@ enum SelfTest {
         check({ if case .ready(.compress, _) = model.phase { return true }; return false }(), "끌어다 놓기 후 압축 준비 상태")
         model.reset()
 
-        // Finder 우클릭 → '맥집에서 열기'(서비스)로 파일을 받은 경우
+        // Finder 우클릭 → '맥집에서 압축하기'(서비스)로 파일을 받은 경우
         let provider = ServiceProvider(model: model)
         let board = NSPasteboard(name: NSPasteboard.Name("maczip-selftest-\(UUID().uuidString)"))
         board.clearContents()
         board.writeObjects([file as NSURL, dir as NSURL])
         var serviceError: NSString = ""
-        provider.openInMacZip(board, userData: "", error: &serviceError)
+        provider.compressInMacZip(board, userData: "", error: &serviceError)
         check(serviceError.length == 0, "서비스 오류 없음: \(serviceError)")
         check({ if case let .ready(.compress, urls) = model.phase { return urls.count == 2 }; return false }(), "서비스로 받은 2개 항목 압축 준비")
         model.reset()
+        // '맥집에서 압축하기'는 .zip 파일도 풀지 않고 압축한다.
+        let zipFile = dir.appendingPathComponent("이미 압축된.zip")
+        try? Data("not really a zip".utf8).write(to: zipFile)
         board.clearContents()
-        provider.openInMacZip(board, userData: "", error: &serviceError)
+        board.writeObjects([zipFile as NSURL])
+        provider.compressInMacZip(board, userData: "", error: &serviceError)
+        check({ if case let .ready(.compress, urls) = model.phase { return urls == [zipFile] }; return false }(), "서비스로 받은 .zip도 압축 준비")
+        model.reset()
+        board.clearContents()
+        provider.compressInMacZip(board, userData: "", error: &serviceError)
         check(serviceError.length > 0, "빈 선택은 오류 메시지")
         board.releaseGlobally()
 

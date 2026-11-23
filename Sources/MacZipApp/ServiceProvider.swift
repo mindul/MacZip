@@ -2,8 +2,8 @@ import AppKit
 import MacZipCore
 import SwiftUI
 
-/// Finder 우클릭 메뉴의 '맥집에서 열기'(macOS 서비스)를 처리한다.
-/// Info.plist의 NSServices → NSMessage "openInMacZip" 과 이름이 같아야 한다.
+/// Finder 우클릭 메뉴의 '맥집에서 압축하기'(macOS 서비스)를 처리한다. 고른 항목은 .zip이어도 항상 압축한다.
+/// Info.plist의 NSServices → NSMessage "compressInMacZip" 과 이름이 같아야 한다.
 final class ServiceProvider: NSObject {
     private let model: AppModel
 
@@ -11,7 +11,7 @@ final class ServiceProvider: NSObject {
         self.model = model
     }
 
-    @objc func openInMacZip(_ pasteboard: NSPasteboard, userData: String,
+    @objc func compressInMacZip(_ pasteboard: NSPasteboard, userData: String,
                             error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self],
                                            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
@@ -25,7 +25,7 @@ final class ServiceProvider: NSObject {
                 error.pointee = "맥집이 다른 작업을 하고 있습니다."
                 return
             }
-            model.handleDrop(urls)
+            model.handlePicked(urls)
             // 자체 점검처럼 NSApplication이 아직 없는 경우에는 창 표시를 건너뛴다.
             guard NSApp != nil else { return }
             (NSApp.delegate as? AppDelegate)?.showMainWindow()
@@ -73,6 +73,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    /// 창을 닫으면 종료: 다음에 '맥집에서 열기'를 누르면 항상 새 창이 뜬다.
+    /// 창을 닫으면 종료: 다음에 '맥집에서 압축하기'를 누르면 항상 새 창이 뜬다.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }

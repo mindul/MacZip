@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4</string>
+	<string>1.5</string>
 	<key>CFBundleVersion</key>
-	<string>6</string>
+	<string>7</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -32,10 +32,10 @@
 			<key>NSMenuItem</key>
 			<dict>
 				<key>default</key>
-				<string>맥집에서 열기</string>
+				<string>맥집에서 압축하기</string>
 			</dict>
 			<key>NSMessage</key>
-			<string>openInMacZip</string>
+			<string>compressInMacZip</string>
 			<key>NSPortName</key>
 			<string>맥집</string>
 			<key>NSRequiredContext</key>
