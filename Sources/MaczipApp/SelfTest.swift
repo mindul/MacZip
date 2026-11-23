@@ -18,6 +18,7 @@ enum SelfTest {
         func check(_ ok: Bool, _ what: String) { if !ok { failures.append(what) } }
 
         let model = AppModel()
+        check(model.encryption == .aes256, "기본 암호 방식은 AES-256")
         // 파일 선택 창에서 고른 것과 같은 경로(reset이 비밀번호를 비움)
         model.handlePicked([file])
         check({ if case .ready(.compress, _) = model.phase { return true }; return false }(), "선택 후 압축 준비 상태")
@@ -28,7 +29,10 @@ enum SelfTest {
         model.updatePasswordConfirmation("abc1")
         check(model.passwordStatus == .ok, "두 칸 일치")
         // 초기화와 끌어다 놓기도 같은 setter를 지남
+        model.encryption = .zipCrypto
         model.reset()
+        check(model.encryption == .zipCrypto, "고른 암호 방식은 초기화 후에도 유지")
+        model.encryption = .aes256
         check(model.password.isEmpty && model.passwordConfirmation.isEmpty && !model.rejectedPasswordInput, "초기화")
         model.handleDrop([file])
         check({ if case .ready(.compress, _) = model.phase { return true }; return false }(), "끌어다 놓기 후 압축 준비 상태")

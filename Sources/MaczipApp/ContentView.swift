@@ -110,6 +110,13 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+                if !model.password.isEmpty {
+                    Picker("암호 방식", selection: $model.encryption) {
+                        Text("AES-256 (반디집·7-Zip)").tag(EncryptionMethod.aes256)
+                        Text("ZipCrypto (윈도우 탐색기)").tag(EncryptionMethod.zipCrypto)
+                    }
+                    .pickerStyle(.radioGroup)
+                }
                 HStack {
                     Button("취소") { model.reset() }
                     Spacer()

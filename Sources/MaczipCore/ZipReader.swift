@@ -15,7 +15,16 @@ public struct ZipEntry {
 
     let flags: UInt16
     let dosTime: UInt16
+    /// WinZip AES 정보(0x9901 확장 필드). 없으면 nil.
+    let aes: AESInfo?
     let localHeaderOffset: UInt64
+}
+
+/// WinZip AES 확장 필드(0x9901) 내용.
+struct AESInfo {
+    let vendorVersion: UInt16   // 1 = AE-1(CRC 검사), 2 = AE-2(CRC 0)
+    let strength: UInt8         // 1=128, 2=192, 3=256
+    let actualMethod: UInt16    // 실제 압축 방식(0 또는 8)
 }
 
 /// zip 파일을 읽는다. 중앙 디렉터리 기준이며 항목별로 스트리밍 해제한다.
@@ -51,7 +60,7 @@ public final class ZipReader {
         struct Raw {
             let raw: RawEntryName; let versionMadeBy: UInt16; let flags: UInt16; let method: UInt16
             let time: UInt16; let date: UInt16; let crc: UInt32; let csize: UInt32; let usize: UInt32
-            let external: UInt32; let offset: UInt32; let aes: Bool
+            let external: UInt32; let offset: UInt32; let aes: Bool; let aesInfo: AESInfo?
         }
         var raws: [Raw] = []
         var p = 0
@@ -65,11 +74,11 @@ public final class ZipReader {
             let csize = cd.u32(at: p + 20), usize = cd.u32(at: p + 24), offset = cd.u32(at: p + 42)
             if csize == 0xFFFF_FFFF || usize == 0xFFFF_FFFF || offset == 0xFFFF_FFFF { throw ZipError.tooLarge("ZIP64") }
             let flags = cd.u16(at: p + 8)
-            let (unicodePath, aes) = Self.parseExtra(extra)
+            let (unicodePath, aes, aesInfo) = Self.parseExtra(extra)
             raws.append(Raw(raw: RawEntryName(bytes: nameBytes, utf8Flag: flags & ZipFlag.utf8 != 0, unicodePath: unicodePath),
                             versionMadeBy: cd.u16(at: p + 4), flags: flags, method: cd.u16(at: p + 10),
                             time: cd.u16(at: p + 12), date: cd.u16(at: p + 14), crc: cd.u32(at: p + 16),
-                            csize: csize, usize: usize, external: cd.u32(at: p + 38), offset: offset, aes: aes))
+                            csize: csize, usize: usize, external: cd.u32(at: p + 38), offset: offset, aes: aes, aesInfo: aesInfo))
             p += 46 + nameLen + extraLen + commentLen
         }
 
@@ -86,7 +95,7 @@ public final class ZipReader {
                 usesAES: r.method == 99 || r.aes,
                 compressedSize: UInt64(r.csize), uncompressedSize: UInt64(r.usize), crc32: r.crc,
                 unixMode: mode, modified: DosTime.decode(time: r.time, date: r.date),
-                flags: r.flags, dosTime: r.time, localHeaderOffset: UInt64(r.offset))
+                flags: r.flags, dosTime: r.time, aes: r.aesInfo, localHeaderOffset: UInt64(r.offset))
         }
     }
 
@@ -95,22 +104,32 @@ public final class ZipReader {
     /// 항목 하나를 destination 파일로 푼다. 실패하면 불완전한 파일을 남기지 않는다.
     public func extract(_ entry: ZipEntry, to destination: URL, password: String?,
                         isCancelled: () -> Bool, bytesProcessed: (Int64) -> Void) throws {
-        if entry.usesAES { throw ZipError.unsupportedAES(entry: entry.name) }
+        // AES 항목인데 0x9901 정보가 없거나 강도를 모르면 풀 수 없다.
+        if entry.usesAES, entry.aes.flatMap({ WinZipAES.sizes(strength: $0.strength) }) == nil {
+            throw ZipError.unsupportedAES(entry: entry.name)
+        }
         if entry.isDirectory {
             do { try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true) }
             catch { throw ZipError.io("폴더를 만들 수 없음: \(entry.name)") }
             return
         }
-        guard entry.method == 0 || entry.method == 8 else { throw ZipError.unsupportedMethod(entry.method) }
+        let method = entry.aes?.actualMethod ?? entry.method
+        guard method == 0 || method == 8 else { throw ZipError.unsupportedMethod(method) }
 
         let local = try Self.read(handle, at: entry.localHeaderOffset, count: 30)
         guard local.count == 30, local.u32(at: 0) == ZipSig.local else { throw ZipError.corrupt("로컬 헤더") }
         let dataStart = entry.localHeaderOffset + 30 + UInt64(local.u16(at: 26)) + UInt64(local.u16(at: 28))
         guard dataStart + entry.compressedSize <= fileSize else { throw ZipError.corrupt("데이터 범위") }
 
+        if let aes = entry.aes {
+            try extractAES(entry, aes: aes, dataStart: dataStart, password: password, to: destination,
+                           isCancelled: isCancelled, bytesProcessed: bytesProcessed)
+            return
+        }
+
         guard entry.isEncrypted else {
-            try stream(entry, from: dataStart, length: entry.compressedSize, decryptor: nil,
-                       to: destination, isCancelled: isCancelled, bytesProcessed: bytesProcessed)
+            try stream(entry, from: dataStart, length: entry.compressedSize, decryption: .none, method: method,
+                       checkCRC: true, to: destination, isCancelled: isCancelled, bytesProcessed: bytesProcessed)
             return
         }
 
@@ -126,8 +145,9 @@ public final class ZipReader {
             let dec = ZipCryptoDecryptor(password: candidate, header: header)
             guard dec.checkByte == timeByte || dec.checkByte == crcByte else { continue }
             do {
-                try stream(entry, from: dataStart + 12, length: entry.compressedSize - 12, decryptor: dec,
-                           to: destination, isCancelled: isCancelled, bytesProcessed: bytesProcessed)
+                try stream(entry, from: dataStart + 12, length: entry.compressedSize - 12, decryption: .zipCrypto(dec),
+                           method: method, checkCRC: true, to: destination, isCancelled: isCancelled,
+                           bytesProcessed: bytesProcessed)
                 return
             } catch let e as ZipError {
                 switch e {
@@ -144,7 +164,51 @@ public final class ZipReader {
 
     // MARK: - 내부
 
-    private func stream(_ entry: ZipEntry, from start: UInt64, length: UInt64, decryptor: ZipCryptoDecryptor?,
+    /// WinZip AES 항목: [솔트][검증값 2][암호문][인증 코드 10]
+    private func extractAES(_ entry: ZipEntry, aes: AESInfo, dataStart: UInt64, password: String?, to destination: URL,
+                            isCancelled: () -> Bool, bytesProcessed: (Int64) -> Void) throws {
+        guard let password, !password.isEmpty else { throw ZipError.passwordRequired }
+        let (keyLength, saltLength) = WinZipAES.sizes(strength: aes.strength)!
+        let overhead = UInt64(saltLength + WinZipAES.verifierLength + WinZipAES.authCodeLength)
+        guard entry.compressedSize >= overhead else { throw ZipError.corrupt("AES 헤더") }
+        let head = Array(try Self.read(handle, at: dataStart, count: saltLength + WinZipAES.verifierLength))
+        let auth = Array(try Self.read(handle, at: dataStart + entry.compressedSize - UInt64(WinZipAES.authCodeLength),
+                                       count: WinZipAES.authCodeLength))
+        guard head.count == saltLength + WinZipAES.verifierLength, auth.count == WinZipAES.authCodeLength else {
+            throw ZipError.corrupt("AES 헤더")
+        }
+        let salt = Array(head[0..<saltLength]), verifier = Array(head[saltLength...])
+        var damaged: ZipError?
+        for candidate in ZipPassword.candidates(password) {
+            let keys = WinZipAES.deriveKeys(password: candidate, salt: salt, keyLength: keyLength)
+            guard keys.verifier == verifier else { continue }
+            do {
+                try stream(entry, from: dataStart + UInt64(saltLength + WinZipAES.verifierLength),
+                           length: entry.compressedSize - overhead,
+                           decryption: .aes(WinZipAESStream(keys: keys), authCode: auth),
+                           method: aes.actualMethod, checkCRC: aes.vendorVersion == 1,
+                           to: destination, isCancelled: isCancelled, bytesProcessed: bytesProcessed)
+                return
+            } catch let e as ZipError {
+                switch e {
+                case .corrupt, .crcMismatch: damaged = e; continue
+                default: throw e
+                }
+            }
+        }
+        // 검증값(2바이트)은 맞았는데 인증 코드가 틀리면 항목 손상으로 본다(우연 일치는 Archiver가 압축 파일 기준으로 판단).
+        if let damaged { throw damaged }
+        throw ZipError.wrongPassword
+    }
+
+    private enum Decryption {
+        case none
+        case zipCrypto(ZipCryptoDecryptor)
+        case aes(WinZipAESStream, authCode: [UInt8])
+    }
+
+    private func stream(_ entry: ZipEntry, from start: UInt64, length: UInt64, decryption: Decryption,
+                        method: UInt16, checkCRC: Bool,
                         to destination: URL, isCancelled: () -> Bool, bytesProcessed: (Int64) -> Void) throws {
         let fm = FileManager.default
         guard fm.createFile(atPath: destination.path, contents: nil),
@@ -157,8 +221,15 @@ public final class ZipReader {
             if !ok { try? fm.removeItem(at: destination) }
         }
 
-        var dec = decryptor
-        let inflater = entry.method == 8 ? RawInflater() : nil
+        var zipCrypto: ZipCryptoDecryptor?
+        var aesStream: WinZipAESStream?
+        var expectedAuth: [UInt8] = []
+        switch decryption {
+        case .none: break
+        case let .zipCrypto(d): zipCrypto = d
+        case let .aes(a, code): aesStream = a; expectedAuth = code
+        }
+        let inflater = method == 8 ? RawInflater() : nil
         var crc: UInt32 = 0
         var written: UInt64 = 0
         func emit(_ d: Data) throws {
@@ -178,14 +249,16 @@ public final class ZipReader {
             // FileHandle이 돌려주는 버퍼는 autorelease되므로 반복마다 풀을 비운다.
             try autoreleasepool {
                 guard var chunk = try? handle.read(upToCount: n), chunk.count == n else { throw ZipError.corrupt("데이터가 짧음") }
-                dec?.decrypt(&chunk)
+                zipCrypto?.decrypt(&chunk)
+                aesStream?.decrypt(&chunk)
                 if let inflater { try inflater.write(chunk, sink: emit) } else { try emit(chunk) }
             }
             remaining -= UInt64(n)
         }
         if let inflater, !inflater.isFinished { throw ZipError.corrupt("inflate") }
         guard written == entry.uncompressedSize else { throw ZipError.corrupt("크기 불일치") }
-        guard crc == entry.crc32 else { throw ZipError.crcMismatch(entry: entry.name) }
+        if checkCRC { guard crc == entry.crc32 else { throw ZipError.crcMismatch(entry: entry.name) } }
+        if let aesStream { guard aesStream.authCode() == expectedAuth else { throw ZipError.corrupt("인증 코드 불일치") } }
 
         var attrs: [FileAttributeKey: Any] = [.modificationDate: entry.modified]
         let perms = entry.unixMode.map { Int($0 & 0o777) } ?? 0
@@ -205,14 +278,21 @@ public final class ZipReader {
     }
 
     /// 확장 필드에서 0x7075(유니코드 경로)와 0x9901(AES) 찾기.
-    private static func parseExtra(_ extra: Data) -> ((crc: UInt32, name: String)?, Bool) {
+    private static func parseExtra(_ extra: Data) -> ((crc: UInt32, name: String)?, Bool, AESInfo?) {
         var p = 0
         var unicodePath: (crc: UInt32, name: String)?
         var aes = false
+        var aesInfo: AESInfo?
         while p + 4 <= extra.count {
             let id = extra.u16(at: p), len = Int(extra.u16(at: p + 2))
             guard p + 4 + len <= extra.count else { break }
-            if id == 0x9901 { aes = true }
+            if id == WinZipAES.extraID {
+                aes = true
+                if len >= 7 {
+                    aesInfo = AESInfo(vendorVersion: extra.u16(at: p + 4), strength: extra[extra.startIndex + p + 8],
+                                      actualMethod: extra.u16(at: p + 9))
+                }
+            }
             if id == 0x7075, len >= 5, extra[extra.startIndex + p + 4] == 1 {
                 let s = extra.startIndex + p + 9
                 if let name = String(bytes: extra[s..<(extra.startIndex + p + 4 + len)], encoding: .utf8) {
@@ -221,6 +301,6 @@ public final class ZipReader {
             }
             p += 4 + len
         }
-        return (unicodePath, aes)
+        return (unicodePath, aes, aesInfo)
     }
 }

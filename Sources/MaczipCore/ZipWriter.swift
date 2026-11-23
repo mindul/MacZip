@@ -39,6 +39,7 @@ public final class ZipWriter {
     }
 
     public func addFile(at source: URL, entryName: String, password: String?,
+                        encryption: EncryptionMethod = .zipCrypto,
                         isCancelled: () -> Bool, bytesProcessed: (Int64) -> Void) throws {
         let fm = FileManager.default
         guard let attrs = try? fm.attributesOfItem(atPath: source.path),
@@ -55,25 +56,40 @@ public final class ZipWriter {
         let ext = (name as NSString).pathExtension.lowercased()
         let method: UInt16 = (size == 0 || Self.storedExtensions.contains(ext)) ? 0 : 8
         let pw = password.flatMap { $0.isEmpty ? nil : ZipPassword.candidates($0).first }
+        let useAES = pw != nil && encryption == .aes256
         var flags = ZipFlag.utf8 | ZipFlag.dataDescriptor
         if pw != nil { flags |= ZipFlag.encrypted }
         let (t, d) = DosTime.encode(modified)
+        // AES 항목은 헤더의 압축 방식을 99로 쓰고, 실제 방식은 0x9901 확장 필드에 둔다(AE-2: CRC는 0).
+        let headerMethod: UInt16 = useAES ? 99 : method
+        let extra = useAES ? WinZipAES.extraField(strength: 3, actualMethod: method) : Data()
+        let versionNeeded: UInt16 = useAES ? 51 : Self.versionNeeded
 
         let localOffset = offset
-        try writeLocalHeader(flags: flags, method: method, time: t, date: d, name: nameBytes)
+        try writeLocalHeader(flags: flags, method: headerMethod, time: t, date: d, name: nameBytes,
+                             extra: extra, versionNeeded: versionNeeded)
 
-        var encryptor: ZipCryptoEncryptor?
+        var zipCrypto: ZipCryptoEncryptor?
+        var aes: WinZipAESStream?
         var csize: UInt64 = 0
-        if let pw {
+        if let pw, useAES {
+            let (keyLength, saltLength) = WinZipAES.sizes(strength: 3)!
+            let salt = WinZipAES.randomSalt(length: saltLength)
+            let keys = WinZipAES.deriveKeys(password: pw, salt: salt, keyLength: keyLength)
+            try write(Data(salt + keys.verifier))
+            csize += UInt64(salt.count + keys.verifier.count)
+            aes = WinZipAESStream(keys: keys)
+        } else if let pw {
             // 데이터 디스크립터 사용 시 검사 바이트는 DOS 시간의 상위 바이트.
             let e = ZipCryptoEncryptor(password: pw, checkByte: UInt8(t >> 8))
             try write(Data(e.header))
             csize += 12
-            encryptor = e
+            zipCrypto = e
         }
         func emit(_ chunk: Data) throws {
             var c = chunk
-            encryptor?.encrypt(&c)
+            zipCrypto?.encrypt(&c)
+            aes?.encrypt(&c)
             try write(c)
             csize += UInt64(c.count)
         }
@@ -100,6 +116,12 @@ public final class ZipWriter {
             }
         }
         if let deflater { try deflater.finish(sink: emit) }
+        if let aes {
+            let code = aes.authCode()
+            try write(Data(code))
+            csize += UInt64(code.count)
+            crc = 0   // AE-2: CRC 대신 인증 코드로 검증한다.
+        }
 
         guard usize < 0xFFFF_FFFF, csize < 0xFFFF_FFFF else { throw ZipError.tooLarge("ZIP64") }
         var desc = Data()
@@ -107,8 +129,9 @@ public final class ZipWriter {
         try write(desc)
 
         let mode = (perms & 0o7777) | 0o100000
-        try appendCentral(flags: flags, method: method, time: t, date: d, crc: crc, csize: UInt32(csize),
-                          usize: UInt32(usize), name: nameBytes, external: mode << 16, localOffset: localOffset)
+        try appendCentral(flags: flags, method: headerMethod, time: t, date: d, crc: crc, csize: UInt32(csize),
+                          usize: UInt32(usize), name: nameBytes, external: mode << 16, localOffset: localOffset,
+                          extra: extra, versionNeeded: versionNeeded)
     }
 
     public func finish() throws {
@@ -131,27 +154,31 @@ public final class ZipWriter {
         offset += UInt64(d.count)
     }
 
-    private func writeLocalHeader(flags: UInt16, method: UInt16, time: UInt16, date: UInt16, name: Data) throws {
+    private func writeLocalHeader(flags: UInt16, method: UInt16, time: UInt16, date: UInt16, name: Data,
+                                  extra: Data = Data(), versionNeeded: UInt16 = ZipWriter.versionNeeded) throws {
         guard offset < 0xFFFF_FFFF else { throw ZipError.tooLarge("ZIP64") }
         var h = Data()
-        h.le32(ZipSig.local); h.le16(Self.versionNeeded); h.le16(flags); h.le16(method)
+        h.le32(ZipSig.local); h.le16(versionNeeded); h.le16(flags); h.le16(method)
         h.le16(time); h.le16(date); h.le32(0); h.le32(0); h.le32(0)
-        h.le16(UInt16(name.count)); h.le16(0)
+        h.le16(UInt16(name.count)); h.le16(UInt16(extra.count))
         h.append(name)
+        h.append(extra)
         try write(h)
     }
 
     private func appendCentral(flags: UInt16, method: UInt16, time: UInt16, date: UInt16, crc: UInt32,
-                               csize: UInt32, usize: UInt32, name: Data, external: UInt32, localOffset: UInt64) throws {
+                               csize: UInt32, usize: UInt32, name: Data, external: UInt32, localOffset: UInt64,
+                               extra: Data = Data(), versionNeeded: UInt16 = ZipWriter.versionNeeded) throws {
         count += 1
         guard count < 0xFFFF else { throw ZipError.tooLarge("ZIP64") }
         var c = Data()
-        c.le32(ZipSig.central); c.le16(Self.versionMadeBy); c.le16(Self.versionNeeded)
+        c.le32(ZipSig.central); c.le16(Self.versionMadeBy); c.le16(versionNeeded)
         c.le16(flags); c.le16(method); c.le16(time); c.le16(date)
         c.le32(crc); c.le32(csize); c.le32(usize)
-        c.le16(UInt16(name.count)); c.le16(0); c.le16(0); c.le16(0); c.le16(0)
+        c.le16(UInt16(name.count)); c.le16(UInt16(extra.count)); c.le16(0); c.le16(0); c.le16(0)
         c.le32(external); c.le32(UInt32(localOffset))
         c.append(name)
+        c.append(extra)
         central.append(c)
     }
 }

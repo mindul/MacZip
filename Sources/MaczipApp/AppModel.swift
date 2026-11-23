@@ -44,6 +44,8 @@ final class AppModel {
     private(set) var passwordConfirmation = ""
     /// 허용되지 않는 문자를 지운 적이 있으면 안내 문구를 보여 준다.
     private(set) var rejectedPasswordInput = false
+    /// 압축 암호 방식. 기본은 AES-256이며, 고른 값은 앱을 끌 때까지 유지한다(reset에서 되돌리지 않음).
+    var encryption: EncryptionMethod = .aes256
 
     /// 압축 비밀번호 입력: 영문·숫자·기호 외의 문자는 지우고 저장한다.
     func updatePassword(_ value: String) { password = allowedPassword(value) }
@@ -177,6 +179,7 @@ final class AppModel {
     // MARK: 실행
 
     private func run(_ mode: OperationMode, _ urls: [URL], password: String?) {
+        let encryption = self.encryption
         let flag = CancelFlag()
         cancelFlag = flag
         workingMode = mode
@@ -194,7 +197,7 @@ final class AppModel {
             do {
                 switch mode {
                 case .compress:
-                    let r = try Archiver.compress(inputs: urls, password: password, progress: report,
+                    let r = try Archiver.compress(inputs: urls, password: password, encryption: encryption, progress: report,
                                                   isCancelled: { flag.isSet })
                     await self?.finishCompress(r, flag: flag)
                 case .extract:

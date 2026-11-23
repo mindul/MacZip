@@ -13,5 +13,6 @@ zipReaderChecks()
 archiverChecks()
 reviewFixChecks()
 passwordEntryChecks()
+aesChecks()
 
 Harness.finish()

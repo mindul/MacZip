@@ -66,6 +66,13 @@ public struct ArchiveInfo: Sendable {
     public let nameEncoding: NameEncoding
 }
 
+extension ZipEntry {
+    /// 풀 때 비밀번호가 필요한 항목(ZipCrypto, 또는 지원하는 AES). 지원하지 않는 AES 형식은 제외.
+    var needsPassword: Bool {
+        isEncrypted && (!usesAES || aes.flatMap { WinZipAES.sizes(strength: $0.strength) } != nil)
+    }
+}
+
 public enum Archiver {
     /// 해제 전 사용자 확인을 받는 총 크기 기준(4GiB).
     public static let confirmBytes: UInt64 = 4 << 30
@@ -78,7 +85,8 @@ public enum Archiver {
         let isDirectory: Bool
     }
 
-    public static func compress(inputs: [URL], password: String?, progress: (ArchiveProgress) -> Void,
+    public static func compress(inputs: [URL], password: String?, encryption: EncryptionMethod = .zipCrypto,
+                                progress: (ArchiveProgress) -> Void,
                                 isCancelled: () -> Bool) throws -> CompressResult {
         guard let first = inputs.first else { throw ZipError.io("압축할 항목이 없음") }
         let fm = FileManager.default
@@ -144,7 +152,7 @@ public enum Archiver {
                                             unixMode: UInt16((attrs?[.posixPermissions] as? NSNumber)?.intValue ?? 0o755))
                 } else {
                     try writer.addFile(at: item.url, entryName: item.entryName, password: password,
-                                       isCancelled: isCancelled, bytesProcessed: { n in
+                                       encryption: encryption, isCancelled: isCancelled, bytesProcessed: { n in
                         completed += n
                         progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: item.entryName))
                     })
@@ -164,7 +172,7 @@ public enum Archiver {
         let r = try ZipReader(url: zip)
         return ArchiveInfo(entryCount: r.entries.count,
                            totalUncompressedBytes: r.entries.reduce(0) { $0 + $1.uncompressedSize },
-                           isEncrypted: r.entries.contains { $0.isEncrypted && !$0.usesAES },
+                           isEncrypted: r.entries.contains { $0.needsPassword },
                            nameEncoding: r.nameEncoding)
     }
 
@@ -174,7 +182,7 @@ public enum Archiver {
                                isCancelled: () -> Bool) throws -> ExtractResult {
         let fm = FileManager.default
         let reader = try ZipReader(url: zip)
-        if reader.entries.contains(where: { $0.isEncrypted && !$0.usesAES }), password?.isEmpty ?? true {
+        if reader.entries.contains(where: { $0.needsPassword }), password?.isEmpty ?? true {
             throw ZipError.passwordRequired
         }
 
