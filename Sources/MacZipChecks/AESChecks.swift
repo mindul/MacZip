@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 /// WinZip AES(AE-2) 암호화 zip 쓰기·읽기. macOS 기본 bsdtar(libarchive)와 양방향 교차 검증한다.
 func aesChecks() {
@@ -16,7 +16,7 @@ func aesChecks() {
             ]
             for (name, data) in files { try data.write(to: src.appendingPathComponent(name)) }
 
-            // 1) Maczip이 만든 AES-256 zip → bsdtar로 풀기
+            // 1) MacZip이 만든 AES-256 zip → bsdtar로 풀기
             let mine = dir.appendingPathComponent("mine.zip")
             let w = try ZipWriter(destination: mine)
             for (name, _) in files {
@@ -27,7 +27,7 @@ func aesChecks() {
             let out1 = dir.appendingPathComponent("out1")
             try fm.createDirectory(at: out1, withIntermediateDirectories: true)
             let x = sh("/usr/bin/bsdtar", ["-x", "--passphrase", "pw1234", "-f", mine.path, "-C", out1.path])
-            Harness.expectEqual(x.status, 0, "bsdtar가 Maczip AES zip을 풂: \(x.err)")
+            Harness.expectEqual(x.status, 0, "bsdtar가 MacZip AES zip을 풂: \(x.err)")
             for (name, data) in files {
                 Harness.expect((try? Data(contentsOf: out1.appendingPathComponent(name))) == data, "bsdtar 결과 내용 일치: \(name)")
             }
@@ -45,7 +45,7 @@ func aesChecks() {
             Harness.expectEqual(rows.count, files.count, "항목 수 \(meta.err)")
             Harness.expect(rows.allSatisfy { $0 == "99 1 0 0200 AE 3" }, "AES 메타데이터: \(rows)")
 
-            // 2) bsdtar가 만든 AES-256·AES-128 zip → Maczip으로 풀기
+            // 2) bsdtar가 만든 AES-256·AES-128 zip → MacZip으로 풀기
             for strength in ["aes256", "aes128"] {
                 let theirs = dir.appendingPathComponent("\(strength).zip")
                 let c = sh("/usr/bin/bsdtar", ["-c", "--format", "zip", "--options", "zip:encryption=\(strength)",
@@ -56,7 +56,7 @@ func aesChecks() {
                     let dest = dir.appendingPathComponent("\(strength)-\(UUID().uuidString)")
                     try r.extract(e, to: dest, password: "pw1234", isCancelled: { false }, bytesProcessed: { _ in })
                     let expected = files.first { $0.0 == e.name }?.1
-                    Harness.expect((try? Data(contentsOf: dest)) == expected, "Maczip이 bsdtar \(strength) zip을 풂: \(e.name)")
+                    Harness.expect((try? Data(contentsOf: dest)) == expected, "MacZip이 bsdtar \(strength) zip을 풂: \(e.name)")
                 }
                 let wrongDest = dir.appendingPathComponent("wrong-\(strength)")
                 Harness.expectThrows({ try r.extract(r.entries[1], to: wrongDest, password: "wrong", isCancelled: { false }, bytesProcessed: { _ in }) },

@@ -1,5 +1,5 @@
 import AppKit
-import MaczipCore
+import MacZipCore
 
 /// `MACZIP_SELFTEST=1`로 실행하면 실제 AppModel로 사용자 흐름을 따라가 본 뒤 종료한다.
 /// 화면 없이 앱 코드의 크래시·상태 오류를 잡기 위한 회귀 점검(통과 시 종료 코드 0).
@@ -38,18 +38,18 @@ enum SelfTest {
         check({ if case .ready(.compress, _) = model.phase { return true }; return false }(), "끌어다 놓기 후 압축 준비 상태")
         model.reset()
 
-        // Finder 우클릭 → 'Maczip에서 열기'(서비스)로 파일을 받은 경우
+        // Finder 우클릭 → '맥집에서 열기'(서비스)로 파일을 받은 경우
         let provider = ServiceProvider(model: model)
         let board = NSPasteboard(name: NSPasteboard.Name("maczip-selftest-\(UUID().uuidString)"))
         board.clearContents()
         board.writeObjects([file as NSURL, dir as NSURL])
         var serviceError: NSString = ""
-        provider.openInMaczip(board, userData: "", error: &serviceError)
+        provider.openInMacZip(board, userData: "", error: &serviceError)
         check(serviceError.length == 0, "서비스 오류 없음: \(serviceError)")
         check({ if case let .ready(.compress, urls) = model.phase { return urls.count == 2 }; return false }(), "서비스로 받은 2개 항목 압축 준비")
         model.reset()
         board.clearContents()
-        provider.openInMaczip(board, userData: "", error: &serviceError)
+        provider.openInMacZip(board, userData: "", error: &serviceError)
         check(serviceError.length > 0, "빈 선택은 오류 메시지")
         board.releaseGlobally()
 

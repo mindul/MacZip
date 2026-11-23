@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MaczipApp: App {
+struct MacZipApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {

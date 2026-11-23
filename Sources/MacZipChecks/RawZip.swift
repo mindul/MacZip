@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 /// 테스트 전용: 이름 바이트·플래그·확장 필드를 그대로 쓰는 최소 zip 생성기(항상 store).
 struct RawZipEntry {

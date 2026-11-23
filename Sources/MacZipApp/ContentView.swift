@@ -1,5 +1,5 @@
 import SwiftUI
-import MaczipCore
+import MacZipCore
 
 struct ContentView: View {
     @Bindable var model: AppModel

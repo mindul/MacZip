@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 private let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
     CFStringEncoding(CFStringEncodings.dosKorean.rawValue)))

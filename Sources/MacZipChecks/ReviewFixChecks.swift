@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 /// 최종 리뷰 지적 사항 재현 검사.
 func reviewFixChecks() {

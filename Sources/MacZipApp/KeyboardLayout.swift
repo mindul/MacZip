@@ -1,5 +1,5 @@
 import Carbon
-import MaczipCore
+import MacZipCore
 
 /// 압축 비밀번호 칸에서 키보드를 영문 자판으로 바꾸고, 벗어나면 원래 자판으로 되돌린다.
 @MainActor

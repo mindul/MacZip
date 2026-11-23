@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 func zipCryptoChecks() {
     Harness.suite("ZipCrypto") {
@@ -32,7 +32,7 @@ func zipCryptoChecks() {
         Harness.expect(mismatches >= 1, "틀린 비밀번호 20개 중 최소 1개는 검사 바이트가 달라야 함")
 
         // 교차 검증: Python zipfile 복호화기
-        let plain = Data("안녕하세요 Maczip ZipCrypto 교차 검증".utf8)
+        let plain = Data("안녕하세요 MacZip ZipCrypto 교차 검증".utf8)
         var e2 = ZipCryptoEncryptor(password: Array("pw".utf8), checkByte: 0x11)
         var body = plain
         e2.encrypt(&body)

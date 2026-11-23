@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 private func isErr(_ e: ZipError) -> (Error) -> Bool { { ($0 as? ZipError) == e } }
 private func isCorrupt(_ e: Error) -> Bool { if case .corrupt? = e as? ZipError { return true }; return false }
@@ -19,7 +19,7 @@ private func readAll(_ zip: URL, _ dir: URL, password: String? = nil) throws -> 
 func zipReaderChecks() {
     Harness.suite("ZipReader") {
         try withTempDir { dir in
-            let hello = Data("안녕하세요 Maczip\n".utf8)
+            let hello = Data("안녕하세요 MacZip\n".utf8)
             let big = Data(String(repeating: "압축 가능한 반복 데이터 ", count: 50_000).utf8)
             try hello.write(to: dir.appendingPathComponent("한글 문서.txt"))
             try big.write(to: dir.appendingPathComponent("big.txt"))

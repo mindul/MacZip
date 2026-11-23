@@ -1,4 +1,4 @@
-// Maczip 앱 아이콘(지퍼 알에서 고개를 내민 병아리)을 1024×1024 PNG로 그린다.
+// 맥집(MacZip) 앱 아이콘(지퍼 알에서 고개를 내민 병아리)을 1024×1024 PNG로 그린다.
 // 사용: swiftc -O scripts/icon/AppIcon.swift -o /tmp/appicon && /tmp/appicon 출력.png
 // 보통은 scripts/make-icon.sh 로 실행한다.
 import CoreGraphics

@@ -4,15 +4,15 @@ import PackageDescription
 let settings: [SwiftSetting] = []
 
 let package = Package(
-    name: "Maczip",
+    name: "MacZip",
     platforms: [.macOS(.v14)],
     targets: [
         .target(
-            name: "MaczipCore",
+            name: "MacZipCore",
             linkerSettings: [.linkedLibrary("z")]
         ),
-        .executableTarget(name: "MaczipApp", dependencies: ["MaczipCore"]),
-        .executableTarget(name: "MaczipChecks", dependencies: ["MaczipCore"]),
+        .executableTarget(name: "MacZipApp", dependencies: ["MacZipCore"]),
+        .executableTarget(name: "MacZipChecks", dependencies: ["MacZipCore"]),
     ],
     swiftLanguageModes: [.v5]
 )

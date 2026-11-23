@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 private let fm = FileManager.default
 private func isErr(_ e: ZipError) -> (Error) -> Bool { { ($0 as? ZipError) == e } }

@@ -1,5 +1,5 @@
 import AppKit
-import MaczipCore
+import MacZipCore
 import Observation
 
 /// 백그라운드 작업과 공유하는 취소 플래그.

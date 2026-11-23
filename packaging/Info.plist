@@ -5,9 +5,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ko</string>
 	<key>CFBundleDisplayName</key>
-	<string>Maczip</string>
+	<string>맥집</string>
 	<key>CFBundleExecutable</key>
-	<string>Maczip</string>
+	<string>MacZip</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIconName</key>
@@ -15,13 +15,13 @@
 	<key>CFBundleIdentifier</key>
 	<string>dev.maczip.app</string>
 	<key>CFBundleName</key>
-	<string>Maczip</string>
+	<string>맥집</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.3</string>
+	<string>1.4</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -32,12 +32,12 @@
 			<key>NSMenuItem</key>
 			<dict>
 				<key>default</key>
-				<string>Maczip에서 열기</string>
+				<string>맥집에서 열기</string>
 			</dict>
 			<key>NSMessage</key>
-			<string>openInMaczip</string>
+			<string>openInMacZip</string>
 			<key>NSPortName</key>
-			<string>Maczip</string>
+			<string>맥집</string>
 			<key>NSRequiredContext</key>
 			<dict/>
 			<key>NSSendFileTypes</key>

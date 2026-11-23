@@ -1,5 +1,5 @@
 import Foundation
-import MaczipCore
+import MacZipCore
 
 func zipWriterChecks() {
     Harness.suite("ZipWriter") {
