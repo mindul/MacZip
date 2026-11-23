@@ -168,9 +168,8 @@ final class AppModel {
         resultURL = r.outputFolder
         var message = "압축 풀기 완료: \(r.outputFolder.lastPathComponent) (\(r.extractedCount)개 파일)"
         if r.skippedSymlinks > 0 { message += "\n심볼릭 링크 \(r.skippedSymlinks)개는 건너뛰었습니다." }
-        if !r.failures.isEmpty {
-            let names = r.failures.prefix(3).map(\.name).joined(separator: ", ")
-            message += "\n\(r.failures.count)개 항목은 풀지 못했습니다: \(names)\(r.failures.count > 3 ? " 외" : "")"
+        if let summary = r.failureSummary {
+            message += "\n풀지 못한 항목이 있습니다.\n\(summary)"
         }
         phase = .done(message)
     }
@@ -191,19 +190,5 @@ final class AppModel {
         }
     }
 
-    static func message(for error: ZipError) -> String {
-        switch error {
-        case .notAZip: return "zip 파일이 아니거나 손상되었습니다."
-        case .corrupt: return "압축 파일이 손상되었습니다."
-        case let .unsupportedMethod(m): return "지원하지 않는 압축 방식입니다. (방식 \(m))"
-        case .unsupportedAES: return "AES 암호화는 지원하지 않습니다."
-        case .passwordRequired: return "비밀번호가 필요합니다."
-        case .wrongPassword: return "비밀번호가 맞지 않습니다."
-        case let .crcMismatch(entry): return "파일이 손상되었습니다: \(entry)"
-        case let .unsafePath(name): return "안전하지 않은 경로라서 건너뛰었습니다: \(name)"
-        case .tooLarge: return "4GB 이상의 파일은 지원하지 않습니다."
-        case .cancelled: return "취소했습니다."
-        case let .io(detail): return "파일을 읽거나 쓸 수 없습니다. (\(detail))"
-        }
-    }
+    static func message(for error: ZipError) -> String { error.userMessage }
 }

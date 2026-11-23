@@ -3,8 +3,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/MaczipApp"
+# Apple Silicon과 Intel을 각각 빌드해 하나의 유니버설 바이너리로 합친다.
+# (Xcode 없이 Command Line Tools만으로 가능: --arch 대신 --triple 사용)
+BINS=()
+for ARCH in arm64 x86_64; do
+    TRIPLE="$ARCH-apple-macosx14.0"
+    swift build -c release --triple "$TRIPLE" --product MaczipApp
+    BINS+=("$(swift build -c release --triple "$TRIPLE" --show-bin-path)/MaczipApp")
+done
+mkdir -p build
+BIN=build/MaczipApp-universal
+lipo -create "${BINS[@]}" -output "$BIN"
 
 APP=build/Maczip.app
 rm -rf "$APP"

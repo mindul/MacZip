@@ -11,5 +11,6 @@ deflateChecks()
 zipWriterChecks()
 zipReaderChecks()
 archiverChecks()
+reviewFixChecks()
 
 Harness.finish()

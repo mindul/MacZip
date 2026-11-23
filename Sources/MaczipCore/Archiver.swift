@@ -40,6 +40,23 @@ public struct ExtractResult: @unchecked Sendable {
     public let extractedCount: Int
     public let skippedSymlinks: Int
     public let failures: [(name: String, error: ZipError)]
+
+    /// 실패 항목을 사유별로 묶은 문구. 실패가 없으면 nil.
+    public var failureSummary: String? {
+        guard !failures.isEmpty else { return nil }
+        var order: [String] = []
+        var groups: [String: [String]] = [:]
+        for f in failures {
+            let key = f.error.reasonLabel
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(f.name)
+        }
+        return order.map { key in
+            let names = groups[key]!
+            let shown = names.prefix(3).joined(separator: ", ")
+            return "\(key) (\(names.count)개): \(shown)\(names.count > 3 ? " 외" : "")"
+        }.joined(separator: "\n")
+    }
 }
 
 public struct ArchiveInfo: Sendable {
@@ -87,7 +104,9 @@ public enum Archiver {
             items.append(Item(url: input, entryName: root + "/", isDirectory: true))
             let base = input.standardizedFileURL.pathComponents
             let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
-            guard let walker = fm.enumerator(at: input, includingPropertiesForKeys: keys) else {
+            var unreadable: [URL] = []
+            guard let walker = fm.enumerator(at: input, includingPropertiesForKeys: keys,
+                                             errorHandler: { url, _ in unreadable.append(url); return true }) else {
                 throw ZipError.io("읽을 수 없음: \(input.lastPathComponent)")
             }
             for case let url as URL in walker {
@@ -100,6 +119,10 @@ public enum Archiver {
                 let rel = url.standardizedFileURL.pathComponents.dropFirst(base.count).joined(separator: "/")
                 let dir = values?.isDirectory == true
                 items.append(Item(url: url, entryName: root + "/" + rel + (dir ? "/" : ""), isDirectory: dir))
+            }
+            // 읽을 수 없는 폴더를 조용히 빠뜨리면 사용자는 불완전한 zip을 보내게 된다.
+            if let first = unreadable.first {
+                throw ZipError.io("읽을 수 없음: \(first.lastPathComponent)")
             }
         }
 
@@ -141,7 +164,7 @@ public enum Archiver {
         let r = try ZipReader(url: zip)
         return ArchiveInfo(entryCount: r.entries.count,
                            totalUncompressedBytes: r.entries.reduce(0) { $0 + $1.uncompressedSize },
-                           isEncrypted: r.entries.contains { $0.isEncrypted },
+                           isEncrypted: r.entries.contains { $0.isEncrypted && !$0.usesAES },
                            nameEncoding: r.nameEncoding)
     }
 
@@ -166,6 +189,7 @@ public enum Archiver {
         var extracted = 0, skipped = 0
         var failures: [(name: String, error: ZipError)] = []
         var usedPaths = Set<String>()   // 대소문자 무시 충돌 감지
+        var encryptedOK = 0, encryptedDamaged = 0
 
         do {
             for entry in reader.entries {
@@ -178,14 +202,17 @@ public enum Archiver {
                 var dest = parts.reduce(temp) { $0.appendingPathComponent($1) }
                 progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: entry.name))
                 if entry.isDirectory {
-                    try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
+                    do { try fm.createDirectory(at: dest, withIntermediateDirectories: true) }
+                    catch { failures.append((entry.name, .io("폴더를 만들 수 없음"))) }
                     usedPaths.insert(dest.path.lowercased())
                     continue
                 }
                 do {
                     try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
                 } catch {
-                    throw ZipError.io("폴더를 만들 수 없음: \(entry.name)")
+                    // 같은 이름의 파일과 폴더 충돌 등: 이 항목만 실패로 기록한다.
+                    failures.append((entry.name, .io("폴더를 만들 수 없음")))
+                    continue
                 }
                 dest = UniqueName.url(for: dest, exists: { fm.fileExists(atPath: $0.path) || usedPaths.contains($0.path.lowercased()) })
                 usedPaths.insert(dest.path.lowercased())
@@ -195,15 +222,21 @@ public enum Archiver {
                         progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: entry.name))
                     })
                     extracted += 1
+                    if entry.isEncrypted { encryptedOK += 1 }
                 } catch let e as ZipError {
+                    if entry.isEncrypted, e == .crcMismatch(entry: entry.name) || { if case .corrupt = e { return true }; return false }() {
+                        encryptedDamaged += 1
+                    }
                     switch e {
-                    case .crcMismatch, .unsupportedMethod, .unsupportedAES, .corrupt:
+                    case .crcMismatch, .unsupportedMethod, .unsupportedAES, .corrupt, .io:
                         failures.append((entry.name, e))
                     default:
                         throw e
                     }
                 }
             }
+            // 암호화 항목이 하나도 안 풀리고 전부 '손상'이면 틀린 비밀번호의 우연 일치로 본다.
+            if encryptedOK == 0 && encryptedDamaged > 0 { throw ZipError.wrongPassword }
             let final = UniqueName.url(for: parent.appendingPathComponent(base))
             do { try fm.moveItem(at: temp, to: final) } catch { throw ZipError.io("결과 폴더를 만들 수 없음") }
             return ExtractResult(outputFolder: final, extractedCount: extracted, skippedSymlinks: skipped, failures: failures)

@@ -117,23 +117,28 @@ public final class ZipReader {
         guard let password, !password.isEmpty else { throw ZipError.passwordRequired }
         guard entry.compressedSize >= 12 else { throw ZipError.corrupt("암호 헤더") }
         let header = Array(try Self.read(handle, at: dataStart, count: 12))
-        let expected = entry.flags & ZipFlag.dataDescriptor != 0
-            ? UInt8(truncatingIfNeeded: entry.dosTime >> 8)
-            : UInt8(truncatingIfNeeded: entry.crc32 >> 24)
+        // 검사 바이트: 데이터 디스크립터를 쓰면 DOS 시간 상위 바이트, 아니면 CRC 상위 바이트가 규칙이지만
+        // 규칙을 따르지 않는 도구가 있어 둘 다 허용한다. 최종 판정은 CRC다.
+        let timeByte = UInt8(truncatingIfNeeded: entry.dosTime >> 8)
+        let crcByte = UInt8(truncatingIfNeeded: entry.crc32 >> 24)
+        var damaged: ZipError?
         for candidate in ZipPassword.candidates(password) {
             let dec = ZipCryptoDecryptor(password: candidate, header: header)
-            guard dec.checkByte == expected else { continue }
+            guard dec.checkByte == timeByte || dec.checkByte == crcByte else { continue }
             do {
                 try stream(entry, from: dataStart + 12, length: entry.compressedSize - 12, decryptor: dec,
                            to: destination, isCancelled: isCancelled, bytesProcessed: bytesProcessed)
                 return
             } catch let e as ZipError {
                 switch e {
-                case .corrupt, .crcMismatch: continue   // 검사 바이트 우연 일치 → 다음 후보
+                case .corrupt, .crcMismatch: damaged = e; continue
                 default: throw e
                 }
             }
         }
+        // 검사 바이트는 맞았는데 내용이 깨졌으면 항목 손상으로 본다(드물게 틀린 비밀번호의 우연 일치일 수 있으며,
+        // 그 경우는 Archiver가 압축 파일 전체 기준으로 wrongPassword로 바꾼다).
+        if let damaged { throw damaged }
         throw ZipError.wrongPassword
     }
 
@@ -155,7 +160,11 @@ public final class ZipReader {
         var dec = decryptor
         let inflater = entry.method == 8 ? RawInflater() : nil
         var crc: UInt32 = 0
+        var written: UInt64 = 0
         func emit(_ d: Data) throws {
+            // 선언된 크기를 넘으면 즉시 중단한다(zip bomb가 확인 단계를 우회하지 못하게).
+            written += UInt64(d.count)
+            if written > entry.uncompressedSize { throw ZipError.corrupt("크기 초과") }
             crc = CRC32.update(crc, d)
             do { try out.write(contentsOf: d) } catch { throw ZipError.io("쓰기 실패: \(entry.name)") }
             bytesProcessed(Int64(d.count))
@@ -175,6 +184,7 @@ public final class ZipReader {
             remaining -= UInt64(n)
         }
         if let inflater, !inflater.isFinished { throw ZipError.corrupt("inflate") }
+        guard written == entry.uncompressedSize else { throw ZipError.corrupt("크기 불일치") }
         guard crc == entry.crc32 else { throw ZipError.crcMismatch(entry: entry.name) }
 
         var attrs: [FileAttributeKey: Any] = [.modificationDate: entry.modified]

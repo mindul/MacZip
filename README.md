@@ -27,7 +27,7 @@ swift run MaczipChecks ZipReader ZipWriter --big   # 400MB 메모리 검사 포�
 ## 설치 파일 만들기
 
 ```bash
-./scripts/make-app.sh    # build/Maczip.app
+./scripts/make-app.sh    # build/Maczip.app (Apple Silicon + Intel 유니버설)
 ./scripts/make-dmg.sh    # build/Maczip.dmg (앱 + Applications 바로가기 + 처음-여는-방법.txt)
 ```
 
@@ -38,7 +38,6 @@ swift run MaczipChecks ZipReader ZipWriter --big   # 400MB 메모리 검사 포�
 - 비밀번호는 **ZipCrypto**(암호 강도 약함). AES로 암호화된 zip은 풀지 못합니다.
 - zip만 지원합니다. 7z, rar 등은 지원하지 않습니다.
 - **4GB 이상**(ZIP64) 파일은 지원하지 않습니다.
-- **Apple Silicon 전용** 빌드입니다. Xcode가 없어 유니버설(Intel 포함) 빌드를 만들 수 없습니다.
 - 심볼릭 링크는 압축·해제 모두 건너뜁니다.
 
 ## 수동 확인 목록
