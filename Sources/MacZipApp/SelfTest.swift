@@ -56,6 +56,49 @@ enum SelfTest {
         provider.compressInMacZip(board, userData: "", error: &serviceError)
         check({ if case let .ready(.compress, urls) = model.phase { return urls == [zipFile] }; return false }(), "서비스로 받은 .zip도 압축 준비")
         model.reset()
+
+        // '맥집에서 압축 풀기': 암호 zip이면 비밀번호를 묻는다(백그라운드 작업 없이 확인 가능)
+        if let enc = try? Archiver.compress(inputs: [file], password: "pw", encryption: .zipCrypto,
+                                            progress: { _ in }, isCancelled: { false }) {
+            board.clearContents()
+            board.writeObjects([enc.output as NSURL])
+            provider.extractInMacZip(board, userData: "", error: &serviceError)
+            check({ if case let .needsPassword(urls) = model.phase { return urls == [enc.output] }; return false }(), "서비스 압축 풀기: 암호 zip은 비밀번호 요청")
+            model.reset()
+        } else {
+            check(false, "자체 점검용 암호 zip 만들기")
+        }
+        // '맥집에서 압축 풀기': 암호 없는 zip은 실제로 풀려서 결과 폴더가 생겨야 한다
+        let plainDir = dir.appendingPathComponent("plain")
+        try? FileManager.default.createDirectory(at: plainDir, withIntermediateDirectories: true)
+        let plainSource = plainDir.appendingPathComponent("p.txt")
+        try? Data("plain".utf8).write(to: plainSource)
+        if let plain = try? Archiver.compress(inputs: [plainSource], password: nil, progress: { _ in }, isCancelled: { false }) {
+            board.clearContents()
+            board.writeObjects([plain.output as NSURL])
+            provider.extractInMacZip(board, userData: "", error: &serviceError)
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline, model.isWorking || { if case .ready = model.phase { return true }; return false }() {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            }
+            let outFile = model.resultURL?.appendingPathComponent("p.txt")
+            check(outFile.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+                  "서비스 압축 풀기: 실제로 풀림 (상태: \(model.phase))")
+            model.reset()
+        } else {
+            check(false, "자체 점검용 zip 만들기")
+        }
+        // zip이 아닌 파일, zip 여러 개는 안내 메시지
+        board.clearContents()
+        board.writeObjects([file as NSURL])
+        provider.extractInMacZip(board, userData: "", error: &serviceError)
+        check({ if case .failed = model.phase { return true }; return false }(), "서비스 압축 풀기: zip이 아니면 안내")
+        model.reset()
+        board.clearContents()
+        board.writeObjects([zipFile as NSURL, dir.appendingPathComponent("둘째.zip") as NSURL])
+        provider.extractInMacZip(board, userData: "", error: &serviceError)
+        check({ if case let .failed(message) = model.phase { return message.contains("하나씩") }; return false }(), "서비스 압축 풀기: 여러 개면 하나씩 안내")
+        model.reset()
         board.clearContents()
         provider.compressInMacZip(board, userData: "", error: &serviceError)
         check(serviceError.length > 0, "빈 선택은 오류 메시지")

@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.5</string>
+	<string>1.6</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -37,12 +37,30 @@
 			<key>NSMessage</key>
 			<string>compressInMacZip</string>
 			<key>NSPortName</key>
-			<string>맥집</string>
+			<string>MacZip</string>
 			<key>NSRequiredContext</key>
 			<dict/>
 			<key>NSSendFileTypes</key>
 			<array>
 				<string>public.item</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>맥집에서 압축 풀기</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>extractInMacZip</string>
+			<key>NSPortName</key>
+			<string>MacZip</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.zip-archive</string>
+				<string>com.pkware.zip-archive</string>
 			</array>
 		</dict>
 	</array>

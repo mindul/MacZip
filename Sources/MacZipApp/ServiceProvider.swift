@@ -1,9 +1,14 @@
 import AppKit
 import MacZipCore
+import os
 import SwiftUI
 
-/// Finder 우클릭 메뉴의 '맥집에서 압축하기'(macOS 서비스)를 처리한다. 고른 항목은 .zip이어도 항상 압축한다.
-/// Info.plist의 NSServices → NSMessage "compressInMacZip" 과 이름이 같아야 한다.
+/// 서비스·실행 흐름 진단용 로그(파일 경로는 남기지 않는다). `log show --predicate 'subsystem == "dev.maczip.app"'`
+let appLog = Logger(subsystem: "dev.maczip.app", category: "service")
+
+/// Finder 우클릭 메뉴(macOS 서비스)를 처리한다. Info.plist의 NSServices → NSMessage 이름과 메서드 이름이 같아야 한다.
+/// - '맥집에서 압축하기'(compressInMacZip): 고른 항목은 .zip이어도 항상 압축한다.
+/// - '맥집에서 압축 풀기'(extractInMacZip): .zip 파일에만 메뉴가 뜨며, zip 하나를 푼다.
 final class ServiceProvider: NSObject {
     private let model: AppModel
 
@@ -12,9 +17,20 @@ final class ServiceProvider: NSObject {
     }
 
     @objc func compressInMacZip(_ pasteboard: NSPasteboard, userData: String,
-                            error: AutoreleasingUnsafeMutablePointer<NSString>) {
+                                error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        handle(pasteboard, error: error) { $0.handlePicked($1) }
+    }
+
+    @objc func extractInMacZip(_ pasteboard: NSPasteboard, userData: String,
+                               error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        handle(pasteboard, error: error) { $0.handleExtractRequest($1) }
+    }
+
+    private func handle(_ pasteboard: NSPasteboard, error: AutoreleasingUnsafeMutablePointer<NSString>,
+                        action: @MainActor (AppModel, [URL]) -> Void) {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self],
                                            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        appLog.notice("서비스 메시지 도착: 항목 \(urls.count)개, 형식 \(pasteboard.types?.map(\.rawValue).joined(separator: ",") ?? "-", privacy: .public)")
         guard !urls.isEmpty else {
             error.pointee = "선택한 파일이 없습니다."
             return
@@ -25,7 +41,7 @@ final class ServiceProvider: NSObject {
                 error.pointee = "맥집이 다른 작업을 하고 있습니다."
                 return
             }
-            model.handlePicked(urls)
+            action(model, urls)
             // 자체 점검처럼 NSApplication이 아직 없는 경우에는 창 표시를 건너뛴다.
             guard NSApp != nil else { return }
             (NSApp.delegate as? AppDelegate)?.showMainWindow()
@@ -60,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         // 서비스로 앱이 실행된 경우에도 메시지를 받을 수 있게 실행 완료 전에 등록한다.
         NSApp.servicesProvider = serviceProvider
+        appLog.notice("서비스 제공자 등록")
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
