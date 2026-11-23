@@ -1,5 +1,7 @@
 # Maczip
 
+<img src="packaging/AppIcon-1024.png" alt="Maczip 아이콘: 지퍼 달린 알에서 고개를 내민 병아리" width="128">
+
 윈도우에서 **한글 파일명이 깨지지 않는 zip**을 만들고, 선택적으로 **비밀번호(ZipCrypto)** 를 거는 맥용 압축 앱입니다. 윈도우에서 만든 zip을 풀 때는 파일명 인코딩(UTF-8/CP949)을 자동으로 판별합니다.
 
 ## 다운로드
@@ -38,6 +40,7 @@ swift run MaczipChecks ZipReader ZipWriter --big   # 400MB 메모리 검사 포�
 
 ```bash
 ./scripts/make-app.sh    # build/Maczip.app (Apple Silicon + Intel 유니버설)
+./scripts/make-icon.sh   # packaging/AppIcon.icns 다시 그리기(아이콘을 바꿀 때만)
 ./scripts/make-dmg.sh    # build/Maczip.dmg (앱 + Applications 바로가기 + 처음-여는-방법.txt)
 ```
 

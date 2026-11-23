@@ -20,6 +20,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Maczip"
 cp packaging/Info.plist "$APP/Contents/Info.plist"
+cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Apple 개발자 계정이 없으므로 ad-hoc 서명만 한다(Apple Silicon 실행 최소 조건).
