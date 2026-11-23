@@ -8,5 +8,6 @@ zipCryptoChecks()
 filenameCodecChecks()
 pathChecks()
 deflateChecks()
+zipWriterChecks()
 
 Harness.finish()
