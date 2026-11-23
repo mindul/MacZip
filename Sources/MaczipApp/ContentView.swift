@@ -5,6 +5,9 @@ struct ContentView: View {
     @Bindable var model: AppModel
     @State private var isTargeted = false
     @State private var sheetPassword = ""
+    @FocusState private var focusedPasswordField: PasswordField?
+
+    private enum PasswordField { case password, confirmation }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -13,6 +16,10 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(minWidth: 420, minHeight: 360)
+        // 압축 비밀번호 칸에 들어가면 영문 자판으로, 벗어나면 원래 자판으로.
+        .onChange(of: focusedPasswordField) { _, field in
+            if field != nil { KeyboardLayout.enterASCIIField() } else { KeyboardLayout.leaveASCIIField() }
+        }
         .sheet(isPresented: needsPasswordBinding) { passwordSheet }
         .alert("큰 압축 파일", isPresented: confirmLargeBinding) {
             Button("계속") { model.confirmLargeExtract() }
@@ -88,16 +95,23 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 SecureField("비밀번호 (비워 두면 암호 없음)", text: $model.password)
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedPasswordField, equals: .password)
                 SecureField("비밀번호 확인", text: $model.passwordConfirmation)
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedPasswordField, equals: .confirmation)
                     .onSubmit { model.startCompress() }
+                if model.rejectedPasswordInput {
+                    Text("비밀번호에는 영문·숫자·기호만 쓸 수 있습니다. 한글은 입력되지 않습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 if model.passwordStatus == .mismatch && !model.passwordConfirmation.isEmpty {
                     Text("비밀번호가 서로 다릅니다.")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
                 if !model.password.isEmpty {
-                    Text("ZipCrypto 방식이라 암호 강도가 약합니다. 한글 비밀번호는 윈도우 프로그램에 따라 열리지 않을 수 있으니 영문·숫자를 권장합니다.")
+                    Text("ZipCrypto 방식이라 암호 강도가 약합니다. 아주 중요한 파일에는 권장하지 않습니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -107,7 +121,7 @@ struct ContentView: View {
                     Spacer()
                     Button("압축") { model.startCompress() }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(model.passwordStatus == .mismatch)
+                        .disabled(model.passwordStatus == .mismatch || model.passwordStatus == .invalidCharacters)
                 }
             }
         case let .working(progress):

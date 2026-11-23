@@ -38,8 +38,23 @@ final class AppModel {
     }
 
     var phase: Phase = .idle
-    var password = ""
-    var passwordConfirmation = ""
+    /// 압축 비밀번호: 영문·숫자·기호 외의 문자는 입력 즉시 지운다.
+    var password = "" {
+        didSet { filterPassword(&password) }
+    }
+    var passwordConfirmation = "" {
+        didSet { filterPassword(&passwordConfirmation) }
+    }
+    /// 허용되지 않는 문자를 지운 적이 있으면 안내 문구를 보여 준다.
+    private(set) var rejectedPasswordInput = false
+
+    private func filterPassword(_ value: inout String) {
+        let allowed = PasswordEntry.allowedOnly(value)
+        if allowed != value {
+            value = allowed
+            rejectedPasswordInput = true
+        }
+    }
     var passwordStatus: PasswordEntry {
         PasswordEntry.check(password: password, confirmation: passwordConfirmation)
     }
@@ -99,7 +114,8 @@ final class AppModel {
     func startCompress() {
         guard case let .ready(.compress, urls) = phase else { return }
         let status = passwordStatus
-        guard status != .mismatch else { return }
+        guard status == .ok || status == .none else { return }
+        KeyboardLayout.leaveASCIIField()
         let pw = status == .ok ? password : nil
         password = ""
         passwordConfirmation = ""
@@ -125,6 +141,8 @@ final class AppModel {
         phase = .idle
         password = ""
         passwordConfirmation = ""
+        rejectedPasswordInput = false
+        KeyboardLayout.leaveASCIIField()
         passwordError = nil
         resultURL = nil
         archiveIsEncrypted = false
