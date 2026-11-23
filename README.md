@@ -2,6 +2,14 @@
 
 윈도우에서 **한글 파일명이 깨지지 않는 zip**을 만들고, 선택적으로 **비밀번호(ZipCrypto)** 를 거는 맥용 압축 앱입니다. 윈도우에서 만든 zip을 풀 때는 파일명 인코딩(UTF-8/CP949)을 자동으로 판별합니다.
 
+## 다운로드
+
+**[Maczip.dmg 내려받기 (최신 버전)](https://github.com/mindul/Maczip/releases/latest/download/Maczip.dmg)** · [릴리스 목록](https://github.com/mindul/Maczip/releases)
+
+- macOS 14 이상, Apple Silicon·Intel 모두 지원
+- dmg를 열고 Maczip을 Applications 폴더로 끌어다 놓으세요.
+- 서명하지 않은 앱이라 처음 실행할 때 경고가 뜹니다. **Maczip을 우클릭 → 열기 → 열기**로 한 번만 허용하면 됩니다.
+
 - 설계: `docs/superpowers/specs/2026-11-23-maczip-design.md`
 - 구현 계획: `docs/superpowers/plans/2026-11-23-maczip.md`
 
