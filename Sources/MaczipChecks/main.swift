@@ -6,5 +6,6 @@ Harness.suite("러너") {
 
 zipCryptoChecks()
 filenameCodecChecks()
+pathChecks()
 
 Harness.finish()
