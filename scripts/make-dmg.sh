@@ -26,4 +26,8 @@ hdiutil detach "$MOUNT" >/dev/null
 # 2) 배포용 압축 이미지로 변환한다.
 hdiutil convert "$RW" -format UDZO -o "$DMG" >/dev/null
 rm -rf "$STAGE" "$RW" "$MOUNT"
+# 복사·이미지 생성 중에 macOS가 빌드 폴더의 앱을 다시 등록하므로 해제한다(Finder '다음으로 열기' 중복 방지).
+sleep 3
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PWD/build/맥집.app" 2>/dev/null || true
+
 echo "만든 설치 파일: $DMG ($(du -h "$DMG" | cut -f1))"

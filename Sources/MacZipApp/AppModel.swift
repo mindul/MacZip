@@ -112,22 +112,6 @@ final class AppModel {
         phase = .ready(.compress, urls)
     }
 
-    /// '맥집에서 압축 풀기'로 받은 항목: zip 파일 하나만 푼다.
-    func handleExtractRequest(_ urls: [URL]) {
-        guard !isWorking, !urls.isEmpty else { return }
-        reset()
-        currentURLs = urls
-        let zips = urls.filter { $0.pathExtension.lowercased() == "zip" }
-        appLog.notice("압축 풀기 요청: 항목 \(urls.count)개, zip \(zips.count)개")
-        if zips.count > 1 || (zips.count == 1 && urls.count > 1) {
-            phase = .failed("한 번에 zip 파일 하나만 풀 수 있어요. 하나씩 골라 주세요.")
-        } else if let zip = zips.first {
-            prepareExtract([zip])
-        } else {
-            phase = .failed("zip 파일이 아니라서 풀 수 없어요.")
-        }
-    }
-
     func startCompress() {
         guard case let .ready(.compress, urls) = phase else { return }
         let status = passwordStatus

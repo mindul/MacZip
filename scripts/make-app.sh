@@ -25,7 +25,8 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # 실제 앱 코드로 사용자 흐름을 따라가 보는 자체 점검(크래시 회귀 방지). 실패하면 여기서 멈춘다.
 for ARCH in arm64 x86_64; do
-    if ! MACZIP_SELFTEST=1 arch "-$ARCH" "$APP/Contents/MacOS/MacZip"; then
+    # 번들 밖의 같은 실행 파일로 점검한다(번들 안의 것을 실행하면 macOS가 빌드 폴더의 앱을 등록해 버린다).
+    if ! MACZIP_SELFTEST=1 arch "-$ARCH" "$BIN"; then
         echo "자체 점검 실패($ARCH): 앱을 배포하지 마세요." >&2
         exit 1
     fi
@@ -33,6 +34,11 @@ done
 
 # Apple 개발자 계정이 없으므로 ad-hoc 서명만 한다(Apple Silicon 실행 최소 조건).
 codesign --force --deep -s - "$APP"
+
+# 빌드 폴더의 앱이 macOS에 등록되면 Finder '다음으로 열기'에 맥집이 두 번 보인다. 등록을 해제해 둔다.
+# (서명 직후 macOS가 조금 늦게 등록하므로 잠시 기다린 뒤 해제한다.)
+sleep 3
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PWD/$APP" 2>/dev/null || true
 
 echo "만든 앱: $APP"
 echo "아키텍처: $(lipo -archs "$APP/Contents/MacOS/MacZip")"
