@@ -9,5 +9,6 @@ filenameCodecChecks()
 pathChecks()
 deflateChecks()
 zipWriterChecks()
+zipReaderChecks()
 
 Harness.finish()

@@ -81,19 +81,23 @@ public final class ZipWriter {
         let deflater = method == 8 ? RawDeflater() : nil
         var crc: UInt32 = 0
         var usize: UInt64 = 0
-        while true {
+        var done = false
+        while !done {
             if isCancelled() { throw ZipError.cancelled }
-            let chunk: Data
-            do {
-                guard let c = try input.read(upToCount: Self.readChunk), !c.isEmpty else { break }
-                chunk = c
-            } catch {
-                throw ZipError.io("읽기 실패: \(source.lastPathComponent)")
+            // FileHandle이 돌려주는 버퍼는 autorelease되므로 반복마다 풀을 비운다.
+            try autoreleasepool {
+                let chunk: Data
+                do {
+                    guard let c = try input.read(upToCount: Self.readChunk), !c.isEmpty else { done = true; return }
+                    chunk = c
+                } catch {
+                    throw ZipError.io("읽기 실패: \(source.lastPathComponent)")
+                }
+                crc = CRC32.update(crc, chunk)
+                usize += UInt64(chunk.count)
+                if let deflater { try deflater.write(chunk, sink: emit) } else { try emit(chunk) }
+                bytesProcessed(Int64(chunk.count))
             }
-            crc = CRC32.update(crc, chunk)
-            usize += UInt64(chunk.count)
-            if let deflater { try deflater.write(chunk, sink: emit) } else { try emit(chunk) }
-            bytesProcessed(Int64(chunk.count))
         }
         if let deflater { try deflater.finish(sink: emit) }
 

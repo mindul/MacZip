@@ -64,6 +64,19 @@ func zipWriterChecks() {
             Harness.expectThrows({
                 try wc.addFile(at: big, entryName: "x", password: nil, isCancelled: { true }, bytesProcessed: { _ in })
             }, matching: { ($0 as? ZipError) == .cancelled }, "취소")
+
+            // 큰 파일 압축 메모리 (--big 에서만)
+            if Harness.flags.contains("--big") {
+                sh("/usr/sbin/mkfile", ["-n", "400m", "zeros.bin"], cwd: dir)
+                let before = maxRSS()
+                let wb = try ZipWriter(destination: dir.appendingPathComponent("bigw.zip"))
+                try wb.addFile(at: dir.appendingPathComponent("zeros.bin"), entryName: "zeros.bin", password: "pw",
+                               isCancelled: { false }, bytesProcessed: { _ in })
+                try wb.finish()
+                let grew = maxRSS() - before
+                Harness.expect(grew < 100 * 1024 * 1024, "400MB 압축 시 메모리 증가 \(grew / 1024 / 1024)MB < 100MB")
+                Harness.expectEqual(sh("/usr/bin/unzip", ["-tq", "-P", "pw", dir.appendingPathComponent("bigw.zip").path]).status, 0, "큰 zip 검증")
+            }
         }
     }
 }
