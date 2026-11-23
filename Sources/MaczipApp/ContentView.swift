@@ -110,12 +110,6 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-                if !model.password.isEmpty {
-                    Text("ZipCrypto 방식이라 암호 강도가 약합니다. 아주 중요한 파일에는 권장하지 않습니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
                 HStack {
                     Button("취소") { model.reset() }
                     Spacer()
