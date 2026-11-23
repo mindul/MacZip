@@ -13,7 +13,7 @@
 
 ## 설치
 
-[최신 버전 dmg 받기](https://github.com/mindul/Maczip/releases/latest/download/MacZip.dmg) — 예전 버전은 [릴리스 목록](https://github.com/mindul/Maczip/releases)에 있어요.
+[최신 버전 dmg 받기](https://github.com/mindul/MacZip/releases/latest/download/MacZip.dmg) — 예전 버전은 [릴리스 목록](https://github.com/mindul/MacZip/releases)에 있어요.
 
 dmg를 열고 맥집을 Applications 폴더로 옮기면 끝입니다. macOS 14 이상이면 Apple Silicon이든 Intel이든 다 돌아가요.
 
