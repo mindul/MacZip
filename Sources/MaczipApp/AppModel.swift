@@ -39,6 +39,10 @@ final class AppModel {
 
     var phase: Phase = .idle
     var password = ""
+    var passwordConfirmation = ""
+    var passwordStatus: PasswordEntry {
+        PasswordEntry.check(password: password, confirmation: passwordConfirmation)
+    }
     private(set) var passwordError: String?
     private(set) var resultURL: URL?
     private(set) var currentURLs: [URL] = []
@@ -47,6 +51,14 @@ final class AppModel {
     private var archiveIsEncrypted = false
 
     var isWorking: Bool { if case .working = phase { return true } else { return false } }
+
+    /// 첫 화면(또는 완료·실패 화면)에서만 클릭으로 파일을 고를 수 있다.
+    var canPick: Bool {
+        switch phase {
+        case .idle, .done, .failed: return true
+        default: return false
+        }
+    }
 
     // MARK: 사용자 동작
 
@@ -62,10 +74,35 @@ final class AppModel {
         }
     }
 
+    /// 파일 선택 창에서 파일·폴더를 여러 개 골라 압축 준비 상태로 간다.
+    func chooseFilesToCompress() {
+        guard canPick else { return }
+        let panel = NSOpenPanel()
+        panel.title = "압축할 파일과 폴더 선택"
+        panel.prompt = "선택"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = false
+        guard panel.runModal() == .OK else { return }
+        handlePicked(panel.urls)
+    }
+
+    /// 선택 창에서 고른 항목은 .zip 파일이어도 항상 압축한다.
+    func handlePicked(_ urls: [URL]) {
+        guard !isWorking, !urls.isEmpty else { return }
+        reset()
+        currentURLs = urls
+        phase = .ready(.compress, urls)
+    }
+
     func startCompress() {
         guard case let .ready(.compress, urls) = phase else { return }
-        let pw = password.isEmpty ? nil : password
+        let status = passwordStatus
+        guard status != .mismatch else { return }
+        let pw = status == .ok ? password : nil
         password = ""
+        passwordConfirmation = ""
         run(.compress, urls, password: pw)
     }
 
@@ -87,6 +124,7 @@ final class AppModel {
         cancelFlag = nil
         phase = .idle
         password = ""
+        passwordConfirmation = ""
         passwordError = nil
         resultURL = nil
         archiveIsEncrypted = false

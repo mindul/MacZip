@@ -12,5 +12,6 @@ zipWriterChecks()
 zipReaderChecks()
 archiverChecks()
 reviewFixChecks()
+passwordEntryChecks()
 
 Harness.finish()

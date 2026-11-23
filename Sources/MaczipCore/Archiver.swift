@@ -83,7 +83,7 @@ public enum Archiver {
         guard let first = inputs.first else { throw ZipError.io("압축할 항목이 없음") }
         let fm = FileManager.default
         let parent = first.deletingLastPathComponent()
-        let zipName = inputs.count == 1 ? first.lastPathComponent + ".zip" : "보관.zip"
+        let zipName = inputs.count == 1 ? first.lastPathComponent + ".zip" : "archive.zip"
         let output = UniqueName.url(for: parent.appendingPathComponent(zipName))
         let outputPath = output.standardizedFileURL.path
 

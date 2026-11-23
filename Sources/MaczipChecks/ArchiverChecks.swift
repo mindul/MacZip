@@ -47,8 +47,8 @@ func archiverChecks() {
             try write("y", names.appendingPathComponent("b.txt"))
             Harness.expectEqual(try compress([names.appendingPathComponent("보고서.hwp")]).output.lastPathComponent, "보고서.hwp.zip", "단일 파일 이름")
             let two = [names.appendingPathComponent("보고서.hwp"), names.appendingPathComponent("b.txt")]
-            Harness.expectEqual(try compress(two).output.lastPathComponent, "보관.zip", "여러 항목 이름")
-            Harness.expectEqual(try compress(two).output.lastPathComponent, "보관 2.zip", "여러 항목 번호")
+            Harness.expectEqual(try compress(two).output.lastPathComponent, "archive.zip", "여러 항목 이름")
+            Harness.expectEqual(try compress(two).output.lastPathComponent, "archive 2.zip", "여러 항목 번호")
 
             // 제외 항목과 심볼릭 링크
             let junk = dir.appendingPathComponent("junk")

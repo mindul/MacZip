@@ -45,6 +45,9 @@ struct ContentView: View {
             .padding()
         }
         .frame(minHeight: 160)
+        .contentShape(Rectangle())
+        .onTapGesture { model.chooseFilesToCompress() }
+        .help(model.canPick ? "클릭해서 압축할 파일과 폴더를 고르세요" : "")
         .dropDestination(for: URL.self) { urls, _ in
             guard !model.isWorking else { return false }
             model.handleDrop(urls)
@@ -55,7 +58,7 @@ struct ContentView: View {
     private var headline: String {
         switch model.phase {
         case .idle, .needsPassword, .confirmLarge:
-            if case .idle = model.phase { return "파일이나 폴더를 여기에 끌어다 놓으세요" }
+            if case .idle = model.phase { return "파일이나 폴더를 여기에 끌어다 놓거나\n클릭해서 고르세요" }
             return "압축 풀기: \(model.currentURLs.first?.lastPathComponent ?? "")"
         case let .ready(mode, urls):
             return mode == .extract ? "압축 풀기: \(urls.first?.lastPathComponent ?? "")"
@@ -85,6 +88,14 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 SecureField("비밀번호 (비워 두면 암호 없음)", text: $model.password)
                     .textFieldStyle(.roundedBorder)
+                SecureField("비밀번호 확인", text: $model.passwordConfirmation)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { model.startCompress() }
+                if model.passwordStatus == .mismatch && !model.passwordConfirmation.isEmpty {
+                    Text("비밀번호가 서로 다릅니다.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
                 if !model.password.isEmpty {
                     Text("ZipCrypto 방식이라 암호 강도가 약합니다. 한글 비밀번호는 윈도우 프로그램에 따라 열리지 않을 수 있으니 영문·숫자를 권장합니다.")
                         .font(.caption)
@@ -96,6 +107,7 @@ struct ContentView: View {
                     Spacer()
                     Button("압축") { model.startCompress() }
                         .keyboardShortcut(.defaultAction)
+                        .disabled(model.passwordStatus == .mismatch)
                 }
             }
         case let .working(progress):
