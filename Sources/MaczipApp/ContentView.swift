@@ -93,10 +93,10 @@ struct ContentView: View {
         switch model.phase {
         case .ready(.compress, _):
             VStack(alignment: .leading, spacing: 8) {
-                SecureField("비밀번호 (비워 두면 암호 없음)", text: $model.password)
+                SecureField("비밀번호 (비워 두면 암호 없음)", text: Binding(get: { model.password }, set: { model.updatePassword($0) }))
                     .textFieldStyle(.roundedBorder)
                     .focused($focusedPasswordField, equals: .password)
-                SecureField("비밀번호 확인", text: $model.passwordConfirmation)
+                SecureField("비밀번호 확인", text: Binding(get: { model.passwordConfirmation }, set: { model.updatePasswordConfirmation($0) }))
                     .textFieldStyle(.roundedBorder)
                     .focused($focusedPasswordField, equals: .confirmation)
                     .onSubmit { model.startCompress() }

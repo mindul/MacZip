@@ -38,22 +38,21 @@ final class AppModel {
     }
 
     var phase: Phase = .idle
-    /// 압축 비밀번호: 영문·숫자·기호 외의 문자는 입력 즉시 지운다.
-    var password = "" {
-        didSet { filterPassword(&password) }
-    }
-    var passwordConfirmation = "" {
-        didSet { filterPassword(&passwordConfirmation) }
-    }
+    /// 압축 비밀번호. 화면 입력은 반드시 updatePassword(_:)를 거쳐 걸러진다.
+    /// (didSet으로 거르면 @Observable 속성에서 자기 자신을 무한히 다시 부르는 문제가 있어 쓰지 않는다.)
+    private(set) var password = ""
+    private(set) var passwordConfirmation = ""
     /// 허용되지 않는 문자를 지운 적이 있으면 안내 문구를 보여 준다.
     private(set) var rejectedPasswordInput = false
 
-    private func filterPassword(_ value: inout String) {
+    /// 압축 비밀번호 입력: 영문·숫자·기호 외의 문자는 지우고 저장한다.
+    func updatePassword(_ value: String) { password = allowedPassword(value) }
+    func updatePasswordConfirmation(_ value: String) { passwordConfirmation = allowedPassword(value) }
+
+    private func allowedPassword(_ value: String) -> String {
         let allowed = PasswordEntry.allowedOnly(value)
-        if allowed != value {
-            value = allowed
-            rejectedPasswordInput = true
-        }
+        if allowed != value { rejectedPasswordInput = true }
+        return allowed
     }
     var passwordStatus: PasswordEntry {
         PasswordEntry.check(password: password, confirmation: passwordConfirmation)

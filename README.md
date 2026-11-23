@@ -32,6 +32,7 @@ Xcode 없이 Command Line Tools만으로 동작합니다.
 swift build                          # 디버그 빌드
 swift run MaczipApp                  # 앱 바로 실행
 swift run MaczipChecks               # 전체 검사 (XCTest 대신 자체 러너)
+MACZIP_SELFTEST=1 swift run MaczipApp   # 실제 앱 코드로 사용자 흐름 점검(make-app.sh가 자동 실행)
 swift run MaczipChecks ZipReader     # 이름에 ZipReader가 든 검사만
 swift run MaczipChecks ZipReader ZipWriter --big   # 400MB 메모리 검사 포함(느림)
 ```

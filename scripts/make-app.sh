@@ -23,6 +23,14 @@ cp packaging/Info.plist "$APP/Contents/Info.plist"
 cp packaging/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+# 실제 앱 코드로 사용자 흐름을 따라가 보는 자체 점검(크래시 회귀 방지). 실패하면 여기서 멈춘다.
+for ARCH in arm64 x86_64; do
+    if ! MACZIP_SELFTEST=1 arch "-$ARCH" "$APP/Contents/MacOS/Maczip"; then
+        echo "자체 점검 실패($ARCH): 앱을 배포하지 마세요." >&2
+        exit 1
+    fi
+done
+
 # Apple 개발자 계정이 없으므로 ad-hoc 서명만 한다(Apple Silicon 실행 최소 조건).
 codesign --force --deep -s - "$APP"
 
