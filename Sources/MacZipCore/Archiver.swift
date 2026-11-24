@@ -182,6 +182,9 @@ public enum Archiver {
                                isCancelled: () -> Bool) throws -> ExtractResult {
         let fm = FileManager.default
         let reader = try ZipReader(url: zip)
+        // 인터넷에서 받은 zip이면 그 격리 표시를 풀린 파일·폴더에도 옮긴다(Gatekeeper 검사 유지).
+        let quarantine = Quarantine.value(of: zip)
+        reader.quarantine = quarantine
         if reader.entries.contains(where: { $0.needsPassword }), password?.isEmpty ?? true {
             throw ZipError.passwordRequired
         }
@@ -245,6 +248,9 @@ public enum Archiver {
             }
             // 암호화 항목이 하나도 안 풀리고 전부 '손상'이면 틀린 비밀번호의 우연 일치로 본다.
             if encryptedOK == 0 && encryptedDamaged > 0 { throw ZipError.wrongPassword }
+            if let quarantine, !Quarantine.applyToDirectories(quarantine, in: temp) {
+                throw ZipError.io("보안 표시를 붙일 수 없음")
+            }
             let final = UniqueName.url(for: parent.appendingPathComponent(base))
             do { try fm.moveItem(at: temp, to: final) } catch { throw ZipError.io("결과 폴더를 만들 수 없음") }
             return ExtractResult(outputFolder: final, extractedCount: extracted, skippedSymlinks: skipped, failures: failures)

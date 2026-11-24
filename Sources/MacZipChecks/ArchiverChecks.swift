@@ -157,3 +157,45 @@ func archiverChecks() {
         }
     }
 }
+
+/// 인터넷에서 받은 zip의 격리 표시(com.apple.quarantine)가 풀린 항목 전부에 옮겨지는지(Gatekeeper 우회 방지).
+func quarantineChecks() {
+    Harness.suite("Quarantine") {
+        try withTempDir { dir in
+            let src = dir.appendingPathComponent("받은 자료")
+            try write("내용", src.appendingPathComponent("하위/문서.txt"))
+            try write("#!/bin/sh\necho hi\n", src.appendingPathComponent("run.command"))
+            try write("읽기 전용", src.appendingPathComponent("잠김.txt"))
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: src.appendingPathComponent("run.command").path)
+            try fm.setAttributes([.posixPermissions: 0o444], ofItemAtPath: src.appendingPathComponent("잠김.txt").path)
+
+            for pw in [nil, "pw1234"] as [String?] {
+                let label = pw == nil ? "암호 없음" : "암호"
+                let zip = try compress([src], pw).output
+                // 표시 없는 zip: 결과에도 표시가 없어야 한다.
+                let plain = try extract(zip, pw)
+                Harness.expect(Quarantine.value(of: plain.outputFolder.appendingPathComponent("받은 자료/run.command")) == nil,
+                               "표시 없는 zip은 표시를 붙이지 않음 (\(label))")
+                try fm.removeItem(at: plain.outputFolder)
+
+                let value = Data("0083;6b04d203;Safari;".utf8)
+                Harness.expect(Quarantine.apply(value, to: zip), "zip에 표시 붙이기 (\(label))")
+                let x = try extract(zip, pw)
+                Harness.expect(x.failures.isEmpty, "실패 없음 (\(label))")
+                var all = [x.outputFolder]
+                if let walker = fm.enumerator(at: x.outputFolder, includingPropertiesForKeys: nil) {
+                    for case let url as URL in walker { all.append(url) }
+                }
+                Harness.expectEqual(all.count, 6, "풀린 항목 수 (\(label))")
+                for url in all {
+                    Harness.expectEqual(Quarantine.value(of: url), value, "격리 표시: \(url.lastPathComponent) (\(label))")
+                }
+                let mode = (try fm.attributesOfItem(atPath: x.outputFolder.appendingPathComponent("받은 자료/잠김.txt").path)[.posixPermissions] as? NSNumber)?.intValue
+                Harness.expectEqual(mode, 0o444, "읽기 전용 권한 유지 (\(label))")
+                Harness.expect(noTemp(dir), "임시 폴더 없음 (\(label))")
+                try fm.removeItem(at: x.outputFolder)
+                try fm.removeItem(at: zip)
+            }
+        }
+    }
+}

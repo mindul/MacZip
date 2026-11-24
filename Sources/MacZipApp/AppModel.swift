@@ -172,7 +172,7 @@ final class AppModel {
                 run(.extract, urls, password: nil)
             }
         } catch {
-            appLog.notice("압축 풀기 준비 실패: \(String(describing: error), privacy: .public)")
+            appLog.notice("압축 풀기 준비 실패: \(((error as? ZipError) ?? .io("")).logLabel, privacy: .public)")
             phase = .failed(Self.message(for: (error as? ZipError) ?? .io(error.localizedDescription)))
         }
     }
@@ -235,7 +235,7 @@ final class AppModel {
     }
 
     private func fail(_ error: ZipError, urls: [URL], flag: CancelFlag) {
-        appLog.notice("작업 실패: \(error.userMessage, privacy: .public)")
+        appLog.notice("작업 실패: \(error.logLabel, privacy: .public)")
         guard cancelFlag === flag else { return }
         cancelFlag = nil
         switch error {

@@ -14,5 +14,6 @@ archiverChecks()
 reviewFixChecks()
 passwordEntryChecks()
 aesChecks()
+quarantineChecks()
 
 Harness.finish()

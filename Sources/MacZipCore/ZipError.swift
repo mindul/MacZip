@@ -32,6 +32,23 @@ extension ZipError {
         }
     }
 
+    /// 시스템 로그용 오류 종류. 파일 이름·경로 같은 내용은 넣지 않는다.
+    public var logLabel: String {
+        switch self {
+        case .notAZip: return "notAZip"
+        case .corrupt: return "corrupt"
+        case let .unsupportedMethod(m): return "unsupportedMethod(\(m))"
+        case .unsupportedAES: return "unsupportedAES"
+        case .passwordRequired: return "passwordRequired"
+        case .wrongPassword: return "wrongPassword"
+        case .crcMismatch: return "crcMismatch"
+        case .unsafePath: return "unsafePath"
+        case .tooLarge: return "tooLarge"
+        case .cancelled: return "cancelled"
+        case .io: return "io"
+        }
+    }
+
     /// 여러 항목의 실패를 사유별로 묶기 위한 분류 문구(항목 이름 제외).
     var reasonLabel: String {
         switch self {

@@ -31,6 +31,8 @@ struct AESInfo {
 public final class ZipReader {
     public let entries: [ZipEntry]
     public let nameEncoding: NameEncoding
+    /// 풀린 파일마다 붙일 격리 표시(com.apple.quarantine) 값. nil이면 붙이지 않는다.
+    public var quarantine: Data?
 
     private let handle: FileHandle
     private let fileSize: UInt64
@@ -264,6 +266,10 @@ public final class ZipReader {
         let perms = entry.unixMode.map { Int($0 & 0o777) } ?? 0
         attrs[.posixPermissions] = perms == 0 ? 0o644 : perms
         try? out.close()
+        // 읽기 전용 권한을 적용하기 전에 붙여야 한다. 못 붙이면 검사 없이 실행될 수 있으므로 파일을 남기지 않는다.
+        if let quarantine, !Quarantine.apply(quarantine, to: destination) {
+            throw ZipError.io("보안 표시를 붙일 수 없음: \(entry.name)")
+        }
         try? fm.setAttributes(attrs, ofItemAtPath: destination.path)
         ok = true
     }
