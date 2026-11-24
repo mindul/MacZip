@@ -50,11 +50,33 @@ public final class ZipWriter {
         let size = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
         let perms = (attrs[.posixPermissions] as? NSNumber)?.uint32Value ?? 0o644
         let modified = (attrs[.modificationDate] as? Date) ?? Date()
+        let ext = (FilenameCodec.normalizeForArchive(entryName) as NSString).pathExtension.lowercased()
+        try addEntry(entryName: entryName, unixMode: (perms & 0o7777) | 0o100000, modified: modified,
+                     stored: size == 0 || Self.storedExtensions.contains(ext), password: password,
+                     encryption: encryption, isCancelled: isCancelled, bytesProcessed: bytesProcessed,
+                     read: {
+                         do { return try input.read(upToCount: Self.readChunk) }
+                         catch { throw ZipError.io("읽기 실패: \(source.lastPathComponent)") }
+                     })
+    }
 
+    /// 심볼릭 링크 항목: 유닉스 모드에 링크 형식을 적고, 내용은 링크 대상 경로(UTF-8)다.
+    public func addSymlink(entryName: String, target: String, modified: Date, password: String?,
+                           encryption: EncryptionMethod = .zipCrypto) throws {
+        var pending: Data? = Data(target.utf8)
+        try addEntry(entryName: entryName, unixMode: 0o120755, modified: modified, stored: true,
+                     password: password, encryption: encryption, isCancelled: { false }, bytesProcessed: { _ in },
+                     read: { defer { pending = nil }; return pending })
+    }
+
+    /// 파일·링크 공용: read가 nil이나 빈 데이터를 줄 때까지 읽어 압축·암호화해 쓴다.
+    private func addEntry(entryName: String, unixMode: UInt32, modified: Date, stored: Bool,
+                          password: String?, encryption: EncryptionMethod,
+                          isCancelled: () -> Bool, bytesProcessed: (Int64) -> Void,
+                          read: () throws -> Data?) throws {
         let name = FilenameCodec.normalizeForArchive(entryName)
         let nameBytes = Data(name.utf8)
-        let ext = (name as NSString).pathExtension.lowercased()
-        let method: UInt16 = (size == 0 || Self.storedExtensions.contains(ext)) ? 0 : 8
+        let method: UInt16 = stored ? 0 : 8
         let pw = password.flatMap { $0.isEmpty ? nil : ZipPassword.candidates($0).first }
         let useAES = pw != nil && encryption == .aes256
         var flags = ZipFlag.utf8 | ZipFlag.dataDescriptor
@@ -102,13 +124,7 @@ public final class ZipWriter {
             if isCancelled() { throw ZipError.cancelled }
             // FileHandle이 돌려주는 버퍼는 autorelease되므로 반복마다 풀을 비운다.
             try autoreleasepool {
-                let chunk: Data
-                do {
-                    guard let c = try input.read(upToCount: Self.readChunk), !c.isEmpty else { done = true; return }
-                    chunk = c
-                } catch {
-                    throw ZipError.io("읽기 실패: \(source.lastPathComponent)")
-                }
+                guard let chunk = try read(), !chunk.isEmpty else { done = true; return }
                 crc = CRC32.update(crc, chunk)
                 usize += UInt64(chunk.count)
                 if let deflater { try deflater.write(chunk, sink: emit) } else { try emit(chunk) }
@@ -128,9 +144,8 @@ public final class ZipWriter {
         desc.le32(ZipSig.descriptor); desc.le32(crc); desc.le32(UInt32(csize)); desc.le32(UInt32(usize))
         try write(desc)
 
-        let mode = (perms & 0o7777) | 0o100000
         try appendCentral(flags: flags, method: headerMethod, time: t, date: d, crc: crc, csize: UInt32(csize),
-                          usize: UInt32(usize), name: nameBytes, external: mode << 16, localOffset: localOffset,
+                          usize: UInt32(usize), name: nameBytes, external: unixMode << 16, localOffset: localOffset,
                           extra: extra, versionNeeded: versionNeeded)
     }
 

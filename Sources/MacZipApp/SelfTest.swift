@@ -43,10 +43,13 @@ enum SelfTest {
         var passwordAsks: [Bool] = []          // 각 요청의 '다시 묻기' 여부
         var reports: [String] = []
         var idle = false
+        var progressShown = 0, progressClosed = false
         let extractor = BackgroundExtractor(
             ui: .init(askPassword: { _, retry in passwordAsks.append(retry); return passwordAnswers.isEmpty ? nil : passwordAnswers.removeFirst() },
                       confirmLarge: { _, _ in true },
-                      report: { reports.append($0) }),
+                      report: { reports.append($0) },
+                      showProgress: { state in if state == nil { progressClosed = true } else { progressShown += 1 } }),
+            progressDelay: 0,
             onIdle: { idle = true })
         func waitIdle() {
             let deadline = Date().addingTimeInterval(10)
@@ -94,8 +97,45 @@ enum SelfTest {
             check(passwordAsks == [false, true], "틀린 비밀번호면 다시 물음: \(passwordAsks)")
             check(reports.isEmpty, "성공하면 알림 없음: \(reports)")
             check({ if case .idle = model.phase { return true }; return false }(), "창 없이 풀기는 창 상태를 바꾸지 않음")
+            check(progressShown > 0 && progressClosed, "진행 창 표시 후 닫힘: \(progressShown) \(progressClosed)")
         } else {
             check(false, "자체 점검용 zip 만들기")
+        }
+
+        // 진행 창의 [취소]: 지금 풀던 zip과 기다리던 zip을 모두 멈추고, 알림 없이 끝난다.
+        let bigDir = dir.appendingPathComponent("big")
+        for i in 0..<400 {
+            try? fm.createDirectory(at: bigDir.appendingPathComponent("d\(i % 20)"), withIntermediateDirectories: true)
+            try? Data(repeating: UInt8(i % 251), count: 4096).write(to: bigDir.appendingPathComponent("d\(i % 20)/f\(i).bin"))
+        }
+        let cancelDir = dir.appendingPathComponent("cancel")
+        try? fm.createDirectory(at: cancelDir, withIntermediateDirectories: true)
+        if let big = try? Archiver.compress(inputs: [bigDir], password: nil, progress: { _ in }, isCancelled: { false }) {
+            let first = cancelDir.appendingPathComponent("first.zip"), second = cancelDir.appendingPathComponent("second.zip")
+            try? fm.moveItem(at: big.output, to: first)
+            try? fm.copyItem(at: first, to: second)
+            var cancelIdle = false, cancelReports: [String] = [], states: [BackgroundExtractor.ProgressState] = []
+            let canceller = BackgroundExtractor(
+                ui: .init(askPassword: { _, _ in nil }, confirmLarge: { _, _ in true },
+                          report: { cancelReports.append($0) },
+                          showProgress: { state in
+                              guard let state else { return }
+                              states.append(state)
+                              if states.count == 1 { state.onCancel() }   // 처음 뜨자마자 [취소]
+                          }),
+                progressDelay: 0,
+                onIdle: { cancelIdle = true })
+            canceller.enqueue([first, second])
+            let deadline = Date().addingTimeInterval(10)
+            while !cancelIdle, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+            check(cancelIdle, "취소: 끝까지 진행")
+            check(states.first.map { $0.index == 1 && $0.total == 2 && $0.zipName == "first.zip" } ?? false, "진행 창 내용(1/2)")
+            check(!fm.fileExists(atPath: cancelDir.appendingPathComponent("second").path), "취소: 기다리던 zip은 풀지 않음")
+            let leftovers = ((try? fm.contentsOfDirectory(atPath: cancelDir.path)) ?? []).filter { $0.contains("maczip-tmp") }
+            check(leftovers.isEmpty, "취소: 임시 폴더 없음 \(leftovers)")
+            check(cancelReports.isEmpty, "취소: 알림 없음 \(cancelReports)")
+        } else {
+            check(false, "취소 점검용 zip 만들기")
         }
         // zip이 하나도 없으면 안내
         idle = false

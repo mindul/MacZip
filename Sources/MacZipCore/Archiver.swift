@@ -83,6 +83,8 @@ public enum Archiver {
         let url: URL
         let entryName: String
         let isDirectory: Bool
+        /// 심볼릭 링크면 그 대상 경로(풀린 폴더 안을 가리키는 것만 담는다).
+        var linkTarget: String? = nil
     }
 
     public static func compress(inputs: [URL], password: String?, encryption: EncryptionMethod = .zipCrypto,
@@ -123,8 +125,21 @@ public enum Archiver {
                 if name == ".DS_Store" || name.hasPrefix("._") { continue }
                 if url.standardizedFileURL.path == outputPath { continue }
                 let values = try? url.resourceValues(forKeys: Set(keys))
-                if values?.isSymbolicLink == true { skipped += 1; continue }
-                let rel = url.standardizedFileURL.pathComponents.dropFirst(base.count).joined(separator: "/")
+                // 상위 폴더(항상 실제 폴더)만 표준화한다. 대상이 없는 링크는 표준화 결과가 달라(/var ↔ /private/var)
+                // 경로 조각 수가 어긋나기 때문이다.
+                let rel = (url.deletingLastPathComponent().standardizedFileURL.pathComponents + [url.lastPathComponent])
+                    .dropFirst(base.count).joined(separator: "/")
+                if values?.isSymbolicLink == true {
+                    // 앱 안의 링크(Versions/Current 등)는 담고, 폴더 밖을 가리키는 링크는 건너뛴다.
+                    let entryName = root + "/" + rel
+                    if let target = try? fm.destinationOfSymbolicLink(atPath: url.path),
+                       PathSafety.isSafeSymlinkTarget(target, linkComponents: entryName.split(separator: "/").map(String.init)) {
+                        items.append(Item(url: url, entryName: entryName, isDirectory: false, linkTarget: target))
+                    } else {
+                        skipped += 1
+                    }
+                    continue
+                }
                 let dir = values?.isDirectory == true
                 items.append(Item(url: url, entryName: root + "/" + rel + (dir ? "/" : ""), isDirectory: dir))
             }
@@ -135,7 +150,7 @@ public enum Archiver {
         }
 
         let total = items.reduce(Int64(0)) { sum, item in
-            guard !item.isDirectory else { return sum }
+            guard !item.isDirectory, item.linkTarget == nil else { return sum }
             return sum + ((try? fm.attributesOfItem(atPath: item.url.path)[.size] as? NSNumber)?.int64Value ?? 0)
         }
 
@@ -145,7 +160,12 @@ public enum Archiver {
             for item in items {
                 if isCancelled() { throw ZipError.cancelled }
                 progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: item.entryName))
-                if item.isDirectory {
+                if let target = item.linkTarget {
+                    let attrs = try? fm.attributesOfItem(atPath: item.url.path)   // 링크 자신(따라가지 않음)
+                    try writer.addSymlink(entryName: item.entryName, target: target,
+                                          modified: (attrs?[.modificationDate] as? Date) ?? Date(),
+                                          password: password, encryption: encryption)
+                } else if item.isDirectory {
                     let attrs = try? fm.attributesOfItem(atPath: item.url.path)
                     try writer.addDirectory(entryName: item.entryName,
                                             modified: (attrs?[.modificationDate] as? Date) ?? Date(),
@@ -197,21 +217,62 @@ public enum Archiver {
 
         let total = Int64(reader.entries.reduce(UInt64(0)) { $0 + $1.uncompressedSize })
         var completed: Int64 = 0
-        var extracted = 0, skipped = 0
+        var extracted = 0
         var failures: [(name: String, error: ZipError)] = []
         var usedPaths = Set<String>()   // 대소문자 무시 충돌 감지
         var encryptedOK = 0, encryptedDamaged = 0
+        // 심볼릭 링크는 다른 항목을 모두 푼 뒤 마지막에 만든다(파일이 링크를 거쳐 밖에 써지지 않게).
+        var pendingLinks: [(name: String, parts: [String], target: String)] = []
+
+        /// 항목 하나의 해제 오류를 기록한다. 계속할 수 없는 오류는 다시 던진다.
+        func record(_ e: ZipError, for entry: ZipEntry) throws {
+            if entry.isEncrypted, e == .crcMismatch(entry: entry.name) || { if case .corrupt = e { return true }; return false }() {
+                encryptedDamaged += 1
+            }
+            switch e {
+            case .crcMismatch, .unsupportedMethod, .unsupportedAES, .corrupt, .io:
+                failures.append((entry.name, e))
+            default:
+                throw e
+            }
+        }
 
         do {
             for entry in reader.entries {
                 if isCancelled() { throw ZipError.cancelled }
-                if entry.isSymlink { skipped += 1; continue }
                 guard let parts = PathSafety.safeComponents(entry.name) else {
                     failures.append((entry.name, .unsafePath(entry.name)))
                     continue
                 }
                 var dest = parts.reduce(temp) { $0.appendingPathComponent($1) }
                 progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: entry.name))
+                if entry.isSymlink {
+                    // 링크 내용(대상 경로)은 일반 파일처럼 풀어서 읽는다: 암호·CRC·인증 코드 검사를 그대로 거친다.
+                    guard entry.uncompressedSize <= UInt64(PathSafety.maxSymlinkTargetBytes) else {
+                        failures.append((entry.name, .unsafePath(entry.name)))
+                        continue
+                    }
+                    let scratch = temp.appendingPathComponent(".maczip-link-\(UUID().uuidString)")
+                    do {
+                        try reader.extract(entry, to: scratch, password: password, isCancelled: isCancelled,
+                                           bytesProcessed: { n in
+                                           completed += n
+                                           progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: entry.name))
+                                       })
+                        if entry.isEncrypted { encryptedOK += 1 }
+                        let data = try? Data(contentsOf: scratch)
+                        try? fm.removeItem(at: scratch)
+                        guard let data, let target = String(data: data, encoding: .utf8) else {
+                            failures.append((entry.name, .unsafePath(entry.name)))
+                            continue
+                        }
+                        pendingLinks.append((entry.name, parts, target.precomposedStringWithCanonicalMapping))
+                    } catch let e as ZipError {
+                        try? fm.removeItem(at: scratch)
+                        try record(e, for: entry)
+                    }
+                    continue
+                }
                 if entry.isDirectory {
                     do { try fm.createDirectory(at: dest, withIntermediateDirectories: true) }
                     catch { failures.append((entry.name, .io("폴더를 만들 수 없음"))) }
@@ -228,32 +289,35 @@ public enum Archiver {
                 dest = UniqueName.url(for: dest, exists: { fm.fileExists(atPath: $0.path) || usedPaths.contains($0.path.lowercased()) })
                 usedPaths.insert(dest.path.lowercased())
                 do {
-                    try reader.extract(entry, to: dest, password: password, isCancelled: isCancelled, bytesProcessed: { n in
-                        completed += n
-                        progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: entry.name))
-                    })
+                    try reader.extract(entry, to: dest, password: password, isCancelled: isCancelled,
+                                       bytesProcessed: { n in
+                                           completed += n
+                                           progress(ArchiveProgress(completedBytes: completed, totalBytes: total, currentName: entry.name))
+                                       })
                     extracted += 1
                     if entry.isEncrypted { encryptedOK += 1 }
                 } catch let e as ZipError {
-                    if entry.isEncrypted, e == .crcMismatch(entry: entry.name) || { if case .corrupt = e { return true }; return false }() {
-                        encryptedDamaged += 1
-                    }
-                    switch e {
-                    case .crcMismatch, .unsupportedMethod, .unsupportedAES, .corrupt, .io:
-                        failures.append((entry.name, e))
-                    default:
-                        throw e
-                    }
+                    try record(e, for: entry)
                 }
             }
             // 암호화 항목이 하나도 안 풀리고 전부 '손상'이면 틀린 비밀번호의 우연 일치로 본다.
             if encryptedOK == 0 && encryptedDamaged > 0 { throw ZipError.wrongPassword }
+            for link in pendingLinks {
+                if isCancelled() { throw ZipError.cancelled }
+                guard PathSafety.isSafeSymlinkTarget(link.target, linkComponents: link.parts),
+                      let made = makeSymlink(in: temp, parts: link.parts, target: link.target) else {
+                    failures.append((link.name, .unsafePath(link.name)))
+                    continue
+                }
+                if let quarantine { Quarantine.apply(quarantine, to: made) }   // 링크 자신(따라가지 않음)
+                extracted += 1
+            }
             if let quarantine, !Quarantine.applyToDirectories(quarantine, in: temp) {
                 throw ZipError.io("보안 표시를 붙일 수 없음")
             }
             let final = UniqueName.url(for: parent.appendingPathComponent(base))
             do { try fm.moveItem(at: temp, to: final) } catch { throw ZipError.io("결과 폴더를 만들 수 없음") }
-            return ExtractResult(outputFolder: final, extractedCount: extracted, skippedSymlinks: skipped, failures: failures)
+            return ExtractResult(outputFolder: final, extractedCount: extracted, skippedSymlinks: 0, failures: failures)
         } catch {
             try? fm.removeItem(at: temp)
             throw asZipError(error)
@@ -261,6 +325,25 @@ public enum Archiver {
     }
 
     // MARK: 도우미
+
+    /// root 아래 parts 위치에 링크를 만든다. 상위 경로가 모두 실제 폴더여야 하며(링크를 거치지 않음),
+    /// 같은 이름이 이미 있으면 만들지 않는다. 성공하면 링크 URL.
+    private static func makeSymlink(in root: URL, parts: [String], target: String) -> URL? {
+        let fm = FileManager.default
+        var dir = root
+        for name in parts.dropLast() {
+            dir = dir.appendingPathComponent(name)
+            // attributesOfItem은 마지막 링크를 따라가지 않는다(lstat).
+            if let type = (try? fm.attributesOfItem(atPath: dir.path))?[.type] as? FileAttributeType {
+                guard type == .typeDirectory else { return nil }
+            } else {
+                guard (try? fm.createDirectory(at: dir, withIntermediateDirectories: false)) != nil else { return nil }
+            }
+        }
+        let link = dir.appendingPathComponent(parts[parts.count - 1])
+        guard (try? fm.createSymbolicLink(atPath: link.path, withDestinationPath: target)) != nil else { return nil }
+        return link
+    }
 
     private static func isSymlink(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true

@@ -56,10 +56,10 @@ func archiverChecks() {
             try write("x", junk.appendingPathComponent(".DS_Store"))
             try write("x", junk.appendingPathComponent("._keep.txt"))
             try write("x", junk.appendingPathComponent("__MACOSX/a.txt"))
-            try fm.createSymbolicLink(atPath: junk.appendingPathComponent("link").path, withDestinationPath: "keep.txt")
+            try fm.createSymbolicLink(atPath: junk.appendingPathComponent("link").path, withDestinationPath: "../../outside")
             let cj = try compress([junk])
             Harness.expectEqual(pyInspect(cj.output).entries?.map(\.name) ?? [], ["junk/", "junk/keep.txt"], "제외 항목")
-            Harness.expectEqual(cj.skippedSymlinks, 1, "심볼릭 링크 건너뜀")
+            Harness.expectEqual(cj.skippedSymlinks, 1, "밖을 가리키는 심볼릭 링크 건너뜀")
 
             // (Review Focus 2) 출력이 입력 폴더 안에 생김
             let a = dir.appendingPathComponent("A")

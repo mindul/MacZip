@@ -15,5 +15,6 @@ reviewFixChecks()
 passwordEntryChecks()
 aesChecks()
 quarantineChecks()
+symlinkChecks()
 
 Harness.finish()
