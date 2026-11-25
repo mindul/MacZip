@@ -1,6 +1,8 @@
 # 맥집 (MacZip)
 
 <img src="packaging/AppIcon-1024.png" alt="맥집 아이콘: 지퍼 달린 알에서 고개를 내민 병아리" width="128">
+<img width="427" height="398" alt="image" src="https://github.com/user-attachments/assets/9c76be1f-77c1-45bc-ab2c-7f0ba26ef87d" />
+
 
 맥 기본 압축 기능으로는 비밀번호를 걸 수 없다는 점도 아쉬워서 클로드 코드를 이용해서 만들었습니다. 맥에서 압축한 파일을 윈도우 쓰는 사람한테 보내면 한글 파일명이 전부 깨져서 도착하는 게 너무 불편하기도 했구요.
 
