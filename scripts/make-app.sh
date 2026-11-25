@@ -25,6 +25,11 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # 실제 앱 코드로 사용자 흐름을 따라가 보는 자체 점검(크래시 회귀 방지). 실패하면 여기서 멈춘다.
 for ARCH in arm64 x86_64; do
+    # Intel Mac에서는 arm64를 실행할 수 없으므로 그 점검은 건너뛴다(Apple Silicon에서는 둘 다 실행된다).
+    if ! arch "-$ARCH" /usr/bin/true 2>/dev/null; then
+        echo "경고: 이 Mac에서는 ${ARCH}를 실행할 수 없어 자체 점검을 건너뜁니다." >&2
+        continue
+    fi
     # 번들 밖의 같은 실행 파일로 점검한다(번들 안의 것을 실행하면 macOS가 빌드 폴더의 앱을 등록해 버린다).
     if ! MACZIP_SELFTEST=1 arch "-$ARCH" "$BIN"; then
         echo "자체 점검 실패($ARCH): 앱을 배포하지 마세요." >&2
