@@ -19,6 +19,10 @@ private func write(_ s: String, _ url: URL) throws {
 
 func archiverChecks() {
     Harness.suite("Archiver") {
+        let docs = URL(fileURLWithPath: "/tmp/프로젝트")
+        Harness.expectEqual(Archiver.zipName(for: [docs.appendingPathComponent("a.txt")]), "a.txt.zip", "하나는 그 이름")
+        Harness.expectEqual(Archiver.zipName(for: [docs.appendingPathComponent("a.txt"), docs.appendingPathComponent("b")]), "프로젝트.zip", "여러 개는 상위 폴더 이름")
+        Harness.expectEqual(Archiver.zipName(for: [URL(fileURLWithPath: "/a"), URL(fileURLWithPath: "/b")]), "archive.zip", "최상위는 archive")
         try withTempDir { dir in
             // 왕복
             let src = dir.appendingPathComponent("자료")
@@ -47,8 +51,8 @@ func archiverChecks() {
             try write("y", names.appendingPathComponent("b.txt"))
             Harness.expectEqual(try compress([names.appendingPathComponent("보고서.hwp")]).output.lastPathComponent, "보고서.hwp.zip", "단일 파일 이름")
             let two = [names.appendingPathComponent("보고서.hwp"), names.appendingPathComponent("b.txt")]
-            Harness.expectEqual(try compress(two).output.lastPathComponent, "archive.zip", "여러 항목 이름")
-            Harness.expectEqual(try compress(two).output.lastPathComponent, "archive 2.zip", "여러 항목 번호")
+            Harness.expectEqual(try compress(two).output.lastPathComponent, "names.zip", "여러 항목은 상위 폴더 이름")
+            Harness.expectEqual(try compress(two).output.lastPathComponent, "names 2.zip", "여러 항목 번호")
 
             // 제외 항목과 심볼릭 링크
             let junk = dir.appendingPathComponent("junk")

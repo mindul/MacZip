@@ -7,37 +7,31 @@ import SwiftUI
 let appLog = Logger(subsystem: "dev.maczip.app", category: "service")
 
 /// Finder 우클릭 메뉴(macOS 서비스)를 처리한다. Info.plist의 NSServices → NSMessage 이름과 메서드 이름이 같아야 한다.
+/// 두 서비스 모두 맥집 창을 띄우지 않는다.
 /// - '맥집에서 압축하기'(compressInMacZip): 고른 항목은 .zip이어도 항상 압축한다.
-/// - '맥집에서 압축 풀기'(extractInMacZip): .zip 파일에만 메뉴가 뜨며, 맥집 창 없이 차례로 푼다.
+///   하나면 그 이름으로, 여러 개면 상위 폴더 이름으로 바로 zip을 만든다.
+/// - '맥집에서 압축 풀기'(extractInMacZip): .zip 파일에만 메뉴가 뜨며, 차례로 푼다.
 final class ServiceProvider: NSObject {
-    private let model: AppModel
+    private let compressor: BackgroundCompressor
     private let extractor: BackgroundExtractor
 
-    init(model: AppModel, extractor: BackgroundExtractor) {
-        self.model = model
+    init(compressor: BackgroundCompressor, extractor: BackgroundExtractor) {
+        self.compressor = compressor
         self.extractor = extractor
     }
 
     @objc func compressInMacZip(_ pasteboard: NSPasteboard, userData: String,
                                 error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        handle(pasteboard, error: error, showsWindow: true) { model, urls in
-            guard !model.isWorking else { return "맥집이 다른 작업을 하고 있습니다." }
-            model.handlePicked(urls)
-            return nil
-        }
+        handle(pasteboard, error: error) { [compressor] urls in compressor.enqueue(urls) }
     }
 
     @objc func extractInMacZip(_ pasteboard: NSPasteboard, userData: String,
                                error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        handle(pasteboard, error: error, showsWindow: false) { [extractor] _, urls in
-            extractor.enqueue(urls)
-            return nil
-        }
+        handle(pasteboard, error: error) { [extractor] urls in extractor.enqueue(urls) }
     }
 
-    /// action이 문자열을 돌려주면 그 내용을 서비스 오류로 알린다.
     private func handle(_ pasteboard: NSPasteboard, error: AutoreleasingUnsafeMutablePointer<NSString>,
-                        showsWindow: Bool, action: @MainActor (AppModel, [URL]) -> String?) {
+                        action: @MainActor ([URL]) -> Void) {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self],
                                            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         appLog.notice("서비스 메시지 도착: 항목 \(urls.count)개, 형식 \(pasteboard.types?.map(\.rawValue).joined(separator: ",") ?? "-", privacy: .public)")
@@ -46,15 +40,7 @@ final class ServiceProvider: NSObject {
             return
         }
         // 서비스 호출은 메인 스레드에서 온다.
-        MainActor.assumeIsolated {
-            if let message = action(model, urls) {
-                error.pointee = message as NSString
-                return
-            }
-            // 자체 점검처럼 NSApplication이 아직 없는 경우에는 창 표시를 건너뛴다.
-            guard showsWindow, NSApp != nil else { return }
-            (NSApp.delegate as? AppDelegate)?.showMainWindow()
-        }
+        MainActor.assumeIsolated { action(urls) }
     }
 }
 
@@ -64,7 +50,8 @@ final class ServiceProvider: NSObject {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private lazy var extractor = BackgroundExtractor(ui: .alerts, onIdle: { [weak self] in self?.quitIfNoWindow() })
-    private lazy var serviceProvider = ServiceProvider(model: model, extractor: extractor)
+    private lazy var compressor = BackgroundCompressor(ui: .alerts, onIdle: { [weak self] in self?.quitIfNoWindow() })
+    private lazy var serviceProvider = ServiceProvider(compressor: compressor, extractor: extractor)
     private var window: NSWindow?
 
     /// 메인 창을 (없으면 만들어) 앞으로 가져온다.
@@ -92,7 +79,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSUpdateDynamicServices()
         // 파일 열기('다음으로 열기')나 서비스 때문에 실행됐다면 창을 띄우지 않는다.
-        // 압축하기 서비스는 필요할 때 스스로 창을 띄운다.
         let isDefaultLaunch = (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool) ?? true
         appLog.notice("실행: 일반 실행 \(isDefaultLaunch)")
         if isDefaultLaunch { showMainWindow() }
@@ -103,9 +89,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         extractor.enqueue(urls)
     }
 
-    /// 창 없이 푸는 작업이 끝났을 때, 열린 창이 없으면 종료한다.
+    /// 창 없이 풀거나 압축하는 작업이 모두 끝났을 때, 열린 창이 없으면 종료한다.
     private func quitIfNoWindow() {
-        guard !(window?.isVisible ?? false) else { return }
+        guard !(window?.isVisible ?? false), !extractor.isBusy, !compressor.isBusy else { return }
         NSApp.terminate(nil)
     }
 
@@ -115,6 +101,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    /// 창을 닫으면 종료: 다음에 '맥집에서 압축하기'를 누르면 항상 새 창이 뜬다.
+    /// 창을 닫으면 종료.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }

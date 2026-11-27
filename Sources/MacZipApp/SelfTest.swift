@@ -56,28 +56,55 @@ enum SelfTest {
             while !idle, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         }
 
-        // Finder 우클릭 → '맥집에서 압축하기'(서비스)로 파일을 받은 경우
-        let provider = ServiceProvider(model: model, extractor: extractor)
+        // Finder 우클릭 → '맥집에서 압축하기'(서비스): 창 없이 바로 압축한다.
+        var compressIdle = false
+        var compressReports: [String] = []
+        let compressor = BackgroundCompressor(
+            ui: .init(report: { compressReports.append($0) }, showProgress: { _ in }),
+            progressDelay: 0,
+            onIdle: { compressIdle = true })
+        func waitCompressIdle() {
+            let deadline = Date().addingTimeInterval(10)
+            while !compressIdle, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        }
+        let provider = ServiceProvider(compressor: compressor, extractor: extractor)
         let board = NSPasteboard(name: NSPasteboard.Name("maczip-selftest-\(UUID().uuidString)"))
-        board.clearContents()
-        board.writeObjects([file as NSURL, dir as NSURL])
         var serviceError: NSString = ""
+        let fm = FileManager.default
+        // 여러 개: 상위 폴더 이름으로
+        let multi = dir.appendingPathComponent("여러개")
+        try? fm.createDirectory(at: multi, withIntermediateDirectories: true)
+        let m1 = multi.appendingPathComponent("a.txt"), m2 = multi.appendingPathComponent("b.txt")
+        try? Data("a".utf8).write(to: m1)
+        try? Data("b".utf8).write(to: m2)
+        board.clearContents()
+        board.writeObjects([m1 as NSURL, m2 as NSURL])
         provider.compressInMacZip(board, userData: "", error: &serviceError)
         check(serviceError.length == 0, "서비스 오류 없음: \(serviceError)")
-        check({ if case let .ready(.compress, urls) = model.phase { return urls.count == 2 }; return false }(), "서비스로 받은 2개 항목 압축 준비")
-        model.reset()
+        waitCompressIdle()
+        check(compressIdle, "창 없이 압축: 끝까지 진행")
+        check(fm.fileExists(atPath: multi.appendingPathComponent("여러개.zip").path), "여러 개는 상위 폴더 이름으로 압축")
+        // 하나: 그 이름으로
+        compressIdle = false
+        board.clearContents()
+        board.writeObjects([m1 as NSURL])
+        provider.compressInMacZip(board, userData: "", error: &serviceError)
+        waitCompressIdle()
+        check(fm.fileExists(atPath: multi.appendingPathComponent("a.txt.zip").path), "하나는 그 이름으로 압축")
         // '맥집에서 압축하기'는 .zip 파일도 풀지 않고 압축한다.
+        compressIdle = false
         let zipFile = dir.appendingPathComponent("이미 압축된.zip")
         try? Data("not really a zip".utf8).write(to: zipFile)
         board.clearContents()
         board.writeObjects([zipFile as NSURL])
         provider.compressInMacZip(board, userData: "", error: &serviceError)
-        check({ if case let .ready(.compress, urls) = model.phase { return urls == [zipFile] }; return false }(), "서비스로 받은 .zip도 압축 준비")
-        model.reset()
+        waitCompressIdle()
+        check(fm.fileExists(atPath: dir.appendingPathComponent("이미 압축된.zip.zip").path), ".zip도 풀지 않고 압축")
+        check(compressReports.isEmpty, "압축 성공하면 알림 없음: \(compressReports)")
+        check({ if case .idle = model.phase { return true }; return false }(), "창 없이 압축은 창 상태를 바꾸지 않음")
 
         // '맥집에서 압축 풀기' / '다음으로 열기': 창 없이 차례로 푼다
         let srcDir = dir.appendingPathComponent("src"), outDir = dir.appendingPathComponent("out")
-        let fm = FileManager.default
         for d in ["src/pf", "src/ef", "out"] { try? fm.createDirectory(at: dir.appendingPathComponent(d), withIntermediateDirectories: true) }
         try? Data("plain".utf8).write(to: srcDir.appendingPathComponent("pf/p.txt"))
         try? Data("secret".utf8).write(to: srcDir.appendingPathComponent("ef/e.txt"))

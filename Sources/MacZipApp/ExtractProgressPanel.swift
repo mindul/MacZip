@@ -1,6 +1,6 @@
 import AppKit
 
-/// 창 없이 풀 때 오래 걸리면 띄우는 작은 진행 창: zip 이름, (n/전체), 진행 막대, [취소].
+/// 창 없이 풀거나 압축할 때 오래 걸리면 띄우는 작은 진행 창: zip 이름, 동작, (n/전체), 진행 막대, [취소].
 /// 사용자가 Finder에서 하던 일을 방해하지 않도록 포커스를 뺏지 않고 앞에만 띄운다.
 @MainActor
 final class ExtractProgressPanel: NSObject {
@@ -18,7 +18,7 @@ final class ExtractProgressPanel: NSObject {
         }
         onCancel = state.onCancel
         let position = state.total > 1 ? " (\(state.index)/\(state.total))" : ""
-        label.stringValue = "‘\(state.zipName)’ 푸는 중…\(position)"
+        label.stringValue = "‘\(state.zipName)’ \(state.action)…\(position)"
         bar.doubleValue = state.fraction
         let p = panel ?? makePanel()
         if !p.isVisible {

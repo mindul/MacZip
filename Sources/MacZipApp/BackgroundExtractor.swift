@@ -13,6 +13,8 @@ final class BackgroundExtractor {
         let index: Int
         let total: Int
         let fraction: Double
+        /// 진행 창 문구("푸는 중", "압축하는 중").
+        var action = "푸는 중"
         /// [취소]를 눌렀을 때: 지금 풀던 zip과 기다리던 zip을 모두 취소한다.
         let onCancel: @MainActor () -> Void
     }
@@ -194,11 +196,12 @@ extension BackgroundExtractor.UI {
                 let alert = NSAlert()
                 alert.messageText = retry ? "비밀번호가 맞지 않습니다" : "비밀번호가 필요합니다"
                 alert.informativeText = "‘\(name)’의 비밀번호를 입력하세요."
-                let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+                let field = ASCIISecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
                 alert.accessoryView = field
                 alert.addButton(withTitle: "풀기")
                 alert.addButton(withTitle: "취소")
                 alert.window.initialFirstResponder = field
+                defer { KeyboardLayout.leaveASCIIField() }
                 return alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
             },
             confirmLarge: { name, bytes in

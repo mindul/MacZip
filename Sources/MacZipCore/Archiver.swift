@@ -87,13 +87,21 @@ public enum Archiver {
         var linkTarget: String? = nil
     }
 
+    /// 압축 결과 파일 이름: 항목이 하나면 `이름.zip`, 여러 개면 상위 폴더 이름(`폴더.zip`).
+    public static func zipName(for inputs: [URL]) -> String {
+        guard let first = inputs.first else { return "archive.zip" }
+        if inputs.count == 1 { return first.lastPathComponent + ".zip" }
+        let folder = first.deletingLastPathComponent().lastPathComponent
+        return (folder.isEmpty || folder == "/" ? "archive" : folder) + ".zip"
+    }
+
     public static func compress(inputs: [URL], password: String?, encryption: EncryptionMethod = .zipCrypto,
                                 progress: (ArchiveProgress) -> Void,
                                 isCancelled: () -> Bool) throws -> CompressResult {
         guard let first = inputs.first else { throw ZipError.io("압축할 항목이 없음") }
         let fm = FileManager.default
         let parent = first.deletingLastPathComponent()
-        let zipName = inputs.count == 1 ? first.lastPathComponent + ".zip" : "archive.zip"
+        let zipName = zipName(for: inputs)
         let output = UniqueName.url(for: parent.appendingPathComponent(zipName))
         let outputPath = output.standardizedFileURL.path
 

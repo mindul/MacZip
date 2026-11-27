@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var isTargeted = false
     @State private var sheetPassword = ""
     @FocusState private var focusedPasswordField: PasswordField?
+    @FocusState private var sheetFieldFocused: Bool
 
     private enum PasswordField { case password, confirmation }
 
@@ -162,6 +163,7 @@ struct ContentView: View {
             Text(model.currentURLs.first?.lastPathComponent ?? "").foregroundStyle(.secondary)
             SecureField("비밀번호", text: $sheetPassword)
                 .textFieldStyle(.roundedBorder)
+                .focused($sheetFieldFocused)
                 .onSubmit(submitPassword)
             if let error = model.passwordError {
                 Text(error).font(.caption).foregroundStyle(.red)
@@ -176,7 +178,15 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(width: 340)
-        .onAppear { sheetPassword = "" }
+        .onAppear {
+            sheetPassword = ""
+            sheetFieldFocused = true
+        }
+        // 비밀번호 칸이 포커스를 받으면 영문 자판으로, 시트가 닫히면 원래 자판으로.
+        .onChange(of: sheetFieldFocused) { _, focused in
+            if focused { KeyboardLayout.enterASCIIField() } else { KeyboardLayout.leaveASCIIField() }
+        }
+        .onDisappear { KeyboardLayout.leaveASCIIField() }
     }
 
     private func submitPassword() {
